@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, status, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,21 +18,22 @@ import aiofiles
 import aiosmtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import asyncio
+from playwright.async_api import async_playwright
+from PIL import Image
+import io
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# JWT Configuration
 JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production')
 JWT_ALGORITHM = 'HS256'
-JWT_EXPIRATION_HOURS = 24 * 7  # 7 days
+JWT_EXPIRATION_HOURS = 24 * 7
 
-# Subscription Plans
 PLANS = {
     'starter': {'member_limit': 5, 'storage_limit_mb': 1000},
     'pro': {'member_limit': 10, 'storage_limit_mb': 5000},
@@ -40,16 +41,15 @@ PLANS = {
     'enterprise': {'member_limit': 999, 'storage_limit_mb': 100000}
 }
 
-# Create the main app
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
 
-# Upload directory
 UPLOAD_DIR = ROOT_DIR / 'uploads'
 UPLOAD_DIR.mkdir(exist_ok=True)
 (UPLOAD_DIR / 'projects').mkdir(exist_ok=True)
 (UPLOAD_DIR / 'attachments').mkdir(exist_ok=True)
+(UPLOAD_DIR / 'screenshots').mkdir(exist_ok=True)
 
 # Models
 class UserCreate(BaseModel):
@@ -84,7 +84,7 @@ class Team(BaseModel):
 
 class ProjectCreate(BaseModel):
     name: str
-    type: str  # 'url', 'pdf', 'image'
+    type: str
     content_url: Optional[str] = None
 
 class Project(BaseModel):
@@ -95,6 +95,7 @@ class Project(BaseModel):
     type: str
     content_url: Optional[str] = None
     file_path: Optional[str] = None
+    thumbnail_path: Optional[str] = None
     created_by: str
     created_at: str
 
@@ -129,6 +130,7 @@ class Comment(BaseModel):
     guest_email: Optional[str] = None
     content: str
     attachment_path: Optional[str] = None
+    screenshot_path: Optional[str] = None
     created_at: str
 
 class InviteCreate(BaseModel):
@@ -154,18 +156,6 @@ def create_token(user_id: str) -> str:
     payload = {'user_id': user_id, 'exp': expiration}
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-# Helper function for optional authentication
-async def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))) -> Optional[dict]:
-    if not credentials:
-        return None
-    try:
-        token = credentials.credentials
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id = payload.get('user_id')
-        user = await db.users.find_one({'id': user_id}, {'_id': 0, 'password_hash': 0})
-        return user
-    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
-        return None
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     try:
         token = credentials.credentials
@@ -181,27 +171,83 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail='Invalid token')
 
 async def send_email(to_email: str, subject: str, body: str):
-    """Send email using local SMTP (development only)"""
     try:
-        # For development, just log the email
         logger.info(f"Email to {to_email}: {subject}\n{body}")
-        # In production, implement actual SMTP sending
     except Exception as e:
         logger.error(f"Failed to send email: {e}")
+
+async def capture_screenshot(url: str, pin_x: float, pin_y: float) -> Optional[str]:
+    """Capture screenshot of page with pin location marked"""
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page(viewport={'width': 1920, 'height': 1080})
+            await page.goto(url, wait_until='networkidle', timeout=15000)
+            
+            # Take screenshot
+            screenshot_bytes = await page.screenshot(full_page=False)
+            await browser.close()
+            
+            # Mark pin location with red circle
+            img = Image.open(io.BytesIO(screenshot_bytes))
+            from PIL import ImageDraw
+            draw = ImageDraw.Draw(img)
+            
+            # Calculate actual pixel position
+            x_pos = int((pin_x / 100) * img.width)
+            y_pos = int((pin_y / 100) * img.height)
+            
+            # Draw red circle
+            radius = 20
+            draw.ellipse(
+                [(x_pos - radius, y_pos - radius), (x_pos + radius, y_pos + radius)],
+                outline='red',
+                width=3
+            )
+            
+            # Save screenshot
+            screenshot_filename = f"{uuid.uuid4()}.png"
+            screenshot_path = UPLOAD_DIR / 'screenshots' / screenshot_filename
+            img.save(screenshot_path, 'PNG', quality=85)
+            
+            return f"uploads/screenshots/{screenshot_filename}"
+    except Exception as e:
+        logger.error(f"Failed to capture screenshot: {e}")
+        return None
+
+async def generate_project_thumbnail(url: str) -> Optional[str]:
+    """Generate thumbnail for project"""
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page(viewport={'width': 1200, 'height': 800})
+            await page.goto(url, wait_until='networkidle', timeout=15000)
+            screenshot_bytes = await page.screenshot()
+            await browser.close()
+            
+            # Resize to thumbnail
+            img = Image.open(io.BytesIO(screenshot_bytes))
+            img.thumbnail((400, 300))
+            
+            thumbnail_filename = f"{uuid.uuid4()}_thumb.png"
+            thumbnail_path = UPLOAD_DIR / 'screenshots' / thumbnail_filename
+            img.save(thumbnail_path, 'PNG', quality=70)
+            
+            return f"uploads/screenshots/{thumbnail_filename}"
+    except Exception as e:
+        logger.error(f"Failed to generate thumbnail: {e}")
+        return None
 
 # Auth Routes
 @api_router.post("/auth/register")
 async def register(user_data: UserCreate):
-    # Check if user exists
     existing = await db.users.find_one({'email': user_data.email}, {'_id': 0})
     if existing:
         raise HTTPException(status_code=400, detail='Email already registered')
     
-    # Create user
     user_id = str(uuid.uuid4())
     password_hash = hash_password(user_data.password)
     
-    # Create team for owner
     team_id = str(uuid.uuid4())
     team = {
         'id': team_id,
@@ -276,12 +322,10 @@ async def invite_member(invite: InviteCreate, current_user: dict = Depends(get_c
     if not team:
         raise HTTPException(status_code=404, detail='Team not found')
     
-    # Check member limit
     plan_limits = PLANS[team['plan']]
     if team['member_count'] >= plan_limits['member_limit']:
         raise HTTPException(status_code=400, detail='Member limit reached. Please upgrade your plan.')
     
-    # Create invitation
     invitation = {
         'id': str(uuid.uuid4()),
         'email': invite.email,
@@ -292,7 +336,6 @@ async def invite_member(invite: InviteCreate, current_user: dict = Depends(get_c
     }
     await db.invitations.insert_one(invitation)
     
-    # Send invitation email
     await send_email(
         invite.email,
         'Invitation to join Markuply team',
@@ -321,7 +364,6 @@ async def remove_member(member_id: str, current_user: dict = Depends(get_current
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail='Member not found')
     
-    # Update team member count
     await db.teams.update_one(
         {'id': current_user['team_id']},
         {'$inc': {'member_count': -1}}
@@ -332,13 +374,13 @@ async def remove_member(member_id: str, current_user: dict = Depends(get_current
 # Project Routes
 @api_router.post("/projects", response_model=Project)
 async def create_project(
+    background_tasks: BackgroundTasks,
     name: str = Form(...),
     type: str = Form(...),
     content_url: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
     current_user: dict = Depends(get_current_user)
 ):
-    # Check storage limit
     team = await db.teams.find_one({'id': current_user['team_id']}, {'_id': 0})
     plan_limits = PLANS[team['plan']]
     
@@ -347,9 +389,9 @@ async def create_project(
     
     project_id = str(uuid.uuid4())
     file_path = None
+    thumbnail_path = None
     
     if file:
-        # Save file
         file_extension = Path(file.filename).suffix
         file_name = f"{project_id}{file_extension}"
         file_path = f"uploads/projects/{file_name}"
@@ -358,12 +400,15 @@ async def create_project(
             content = await file.read()
             await f.write(content)
             
-            # Update storage usage
             file_size_mb = len(content) / (1024 * 1024)
             await db.teams.update_one(
                 {'id': current_user['team_id']},
                 {'$inc': {'storage_used_mb': file_size_mb}}
             )
+    
+    # Generate thumbnail for URL projects
+    if type == 'url' and content_url:
+        thumbnail_path = await generate_project_thumbnail(content_url)
     
     project = {
         'id': project_id,
@@ -372,6 +417,7 @@ async def create_project(
         'type': type,
         'content_url': content_url,
         'file_path': file_path,
+        'thumbnail_path': thumbnail_path,
         'created_by': current_user['id'],
         'created_at': datetime.now(timezone.utc).isoformat()
     }
@@ -403,7 +449,6 @@ async def delete_project(project_id: str, current_user: dict = Depends(get_curre
     if not project:
         raise HTTPException(status_code=404, detail='Project not found')
     
-    # Delete file if exists
     if project.get('file_path'):
         file_path = UPLOAD_DIR / project['file_path'].replace('uploads/', '')
         if file_path.exists():
@@ -417,7 +462,6 @@ async def delete_project(project_id: str, current_user: dict = Depends(get_curre
 # Pin Routes
 @api_router.post("/pins", response_model=Pin)
 async def create_pin(pin_data: PinCreate, current_user: dict = Depends(get_current_user)):
-    # Verify project access
     project = await db.projects.find_one(
         {'id': pin_data.project_id, 'team_id': current_user['team_id']},
         {'_id': 0}
@@ -440,7 +484,6 @@ async def create_pin(pin_data: PinCreate, current_user: dict = Depends(get_curre
 
 @api_router.get("/pins/{project_id}", response_model=List[Pin])
 async def get_pins(project_id: str, current_user: dict = Depends(get_current_user)):
-    # Verify project access
     project = await db.projects.find_one(
         {'id': project_id, 'team_id': current_user['team_id']},
         {'_id': 0}
@@ -469,10 +512,10 @@ async def update_pin_status(pin_id: str, status: str, current_user: dict = Depen
 # Comment Routes
 @api_router.post("/comments", response_model=Comment)
 async def create_comment(
+    background_tasks: BackgroundTasks,
     comment_data: CommentCreate,
-    current_user: Optional[dict] = Depends(get_current_user_optional)
+    current_user: Optional[dict] = None
 ):
-    # Determine if user is authenticated or guest
     is_guest = current_user is None
     
     if is_guest:
@@ -486,6 +529,20 @@ async def create_comment(
         author_id = current_user['id']
         author_name = current_user['name']
     
+    # Get pin and project info for screenshot
+    pin = await db.pins.find_one({'id': comment_data.pin_id}, {'_id': 0})
+    screenshot_path = None
+    
+    if pin:
+        project = await db.projects.find_one({'id': pin['project_id']}, {'_id': 0})
+        if project and project.get('content_url'):
+            # Capture screenshot in background
+            screenshot_path = await capture_screenshot(
+                project['content_url'],
+                pin['x'],
+                pin['y']
+            )
+    
     comment = {
         'id': str(uuid.uuid4()),
         'pin_id': comment_data.pin_id,
@@ -495,11 +552,11 @@ async def create_comment(
         'guest_email': comment_data.guest_email if is_guest else None,
         'content': comment_data.content,
         'attachment_path': None,
+        'screenshot_path': screenshot_path,
         'created_at': datetime.now(timezone.utc).isoformat()
     }
     await db.comments.insert_one(comment)
     
-    # Send email notification if guest commented
     if is_guest:
         pin = await db.pins.find_one({'id': comment_data.pin_id}, {'_id': 0})
         if pin:
@@ -535,7 +592,6 @@ async def upload_attachment(
         content = await file.read()
         await f.write(content)
         
-        # Update storage usage
         file_size_mb = len(content) / (1024 * 1024)
         await db.teams.update_one(
             {'id': current_user['team_id']},
@@ -582,7 +638,6 @@ async def get_guests(current_user: dict = Depends(get_current_user)):
         {'_id': 0, 'guest_email': 1, 'author_name': 1}
     ).to_list(1000)
     
-    # Deduplicate by email
     unique_guests = {}
     for guest in guests:
         email = guest.get('guest_email')
@@ -597,7 +652,7 @@ async def get_guests(current_user: dict = Depends(get_current_user)):
 # File serving
 @api_router.get("/files/{file_type}/{filename}")
 async def get_file(file_type: str, filename: str):
-    if file_type not in ['projects', 'attachments']:
+    if file_type not in ['projects', 'attachments', 'screenshots']:
         raise HTTPException(status_code=400, detail='Invalid file type')
     
     file_path = UPLOAD_DIR / file_type / filename
@@ -606,7 +661,6 @@ async def get_file(file_type: str, filename: str):
     
     return FileResponse(file_path)
 
-# Include the router
 app.include_router(api_router)
 
 app.add_middleware(
