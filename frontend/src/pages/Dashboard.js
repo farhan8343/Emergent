@@ -4,12 +4,14 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import { Button } from '../components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Card, CardContent } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
+import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { Plus, FileText, Image, Globe, Trash2, Link2 } from 'lucide-react';
+import { Plus, FileText, Image, Globe, Trash2, Link2, Search, MessageSquare, CheckCircle } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -24,6 +26,8 @@ export default function Dashboard() {
   const [contentUrl, setContentUrl] = useState('');
   const [file, setFile] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('newest');
   const { getAuthHeaders } = useAuth();
   const navigate = useNavigate();
 
@@ -119,16 +123,30 @@ export default function Dashboard() {
 
   const getProjectIcon = (type) => {
     switch (type) {
-      case 'pdf':
-        return <FileText className="w-8 h-8 text-accent" />;
-      case 'image':
-        return <Image className="w-8 h-8 text-accent" />;
-      case 'url':
-        return <Globe className="w-8 h-8 text-accent" />;
-      default:
-        return <FileText className="w-8 h-8 text-accent" />;
+      case 'pdf': return <FileText className="w-5 h-5" />;
+      case 'image': return <Image className="w-5 h-5" />;
+      case 'url': return <Globe className="w-5 h-5" />;
+      default: return <FileText className="w-5 h-5" />;
     }
   };
+
+  // Filter and sort projects
+  const filteredAndSortedProjects = projects
+    .filter(project => {
+      if (!searchQuery.trim()) return true;
+      return project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+             project.content_url?.toLowerCase().includes(searchQuery.toLowerCase());
+    })
+    .sort((a, b) => {
+      if (sortBy === 'newest') {
+        return new Date(b.created_at) - new Date(a.created_at);
+      } else if (sortBy === 'oldest') {
+        return new Date(a.created_at) - new Date(b.created_at);
+      } else if (sortBy === 'name') {
+        return a.name.localeCompare(b.name);
+      }
+      return 0;
+    });
 
   if (loading) {
     return (
@@ -144,7 +162,7 @@ export default function Dashboard() {
       
       <div className="max-w-7xl mx-auto px-6 md:px-12 py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-4xl font-bold tracking-tight mb-2" style={{ fontFamily: 'Outfit, sans-serif' }} data-testid="dashboard-heading">
               Projects
@@ -155,7 +173,7 @@ export default function Dashboard() {
           </div>
           <Button
             onClick={() => setCreateMode(!createMode)}
-            className="bg-accent text-accent-foreground hover:bg-accent/90 rounded-full px-6 transition-transform hover:scale-105 active:scale-95"
+            className="bg-accent text-accent-foreground hover:bg-accent/90 rounded-full px-6"
             data-testid="create-project-btn"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -163,14 +181,34 @@ export default function Dashboard() {
           </Button>
         </div>
 
+        {/* Search and Filter Bar */}
+        <div className="flex items-center gap-4 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+              data-testid="search-projects"
+            />
+          </div>
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="w-48" data-testid="sort-projects">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest First</SelectItem>
+              <SelectItem value="oldest">Oldest First</SelectItem>
+              <SelectItem value="name">Name (A-Z)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* Quick Create Form */}
         {createMode && (
           <Card className="mb-8 border-border/40 border-2 border-accent/20">
-            <CardHeader>
-              <CardTitle style={{ fontFamily: 'Outfit, sans-serif' }}>Create New Project</CardTitle>
-              <CardDescription>Choose project type and add content</CardDescription>
-            </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               <form onSubmit={handleCreateProject} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -251,111 +289,99 @@ export default function Dashboard() {
           </Card>
         )}
 
-        {/* Plan Info */}
-        {team && (
-          <Card className="mb-8 border-border/40">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Current Plan</p>
-                  <p className="text-2xl font-bold capitalize" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                    {team.plan}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-muted-foreground mb-1">Team Members</p>
-                  <p className="text-2xl font-bold">
-                    {team.member_count} / {team.member_limit}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-muted-foreground mb-1">Storage Used</p>
-                  <p className="text-2xl font-bold">
-                    {team.storage_used_mb.toFixed(1)} MB / {team.storage_limit_mb} MB
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Projects Grid */}
-        {projects.length === 0 ? (
+        {filteredAndSortedProjects.length === 0 ? (
           <Card className="border-dashed border-2 border-border/40">
             <CardContent className="pt-12 pb-12 text-center">
               <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Plus className="w-8 h-8 text-accent" />
               </div>
               <h3 className="text-xl font-semibold mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                No projects yet
+                {searchQuery ? 'No projects found' : 'No projects yet'}
               </h3>
               <p className="text-muted-foreground mb-6">
-                Create your first project to start collecting feedback
+                {searchQuery ? 'Try a different search term' : 'Create your first project to start collecting feedback'}
               </p>
-              <Button
-                onClick={() => setCreateMode(true)}
-                className="bg-accent text-accent-foreground hover:bg-accent/90 rounded-full"
-                data-testid="empty-create-btn"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Create Project
-              </Button>
+              {!searchQuery && (
+                <Button
+                  onClick={() => setCreateMode(true)}
+                  className="bg-accent text-accent-foreground hover:bg-accent/90 rounded-full"
+                  data-testid="empty-create-btn"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Project
+                </Button>
+              )}
             </CardContent>
           </Card>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project) => (
+            {filteredAndSortedProjects.map((project) => (
               <Card
                 key={project.id}
-                className="border-border/40 hover:shadow-md transition-all duration-300 cursor-pointer group"
+                className="border-border/40 hover:shadow-lg transition-all duration-300 cursor-pointer group overflow-hidden"
                 onClick={() => navigate(`/project/${project.id}`)}
                 data-testid={`project-card-${project.id}`}
               >
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center space-x-3 flex-1">
-                      <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                {/* Thumbnail Preview */}
+                <div className="relative h-48 bg-secondary/50 overflow-hidden">
+                  {project.thumbnail_path ? (
+                    <img
+                      src={`${BACKEND_URL}/api/files/screenshots/${project.thumbnail_path.split('/').pop()}`}
+                      alt={project.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="text-center">
                         {getProjectIcon(project.type)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <CardTitle className="text-lg group-hover:text-accent transition-colors truncate">
-                          {project.name}
-                        </CardTitle>
-                        <CardDescription className="capitalize">
-                          {project.type}
-                        </CardDescription>
+                        <p className="text-xs text-muted-foreground mt-2">{project.type.toUpperCase()}</p>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleShareProject(project.id);
-                        }}
-                        data-testid={`share-project-${project.id}`}
-                      >
-                        <Link2 className="w-4 h-4 text-accent" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteProject(project.id);
-                        }}
-                        data-testid={`delete-project-${project.id}`}
-                      >
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
-                    </div>
+                  )}
+                  
+                  {/* Hover Actions */}
+                  <div className="absolute top-2 right-2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleShareProject(project.id);
+                      }}
+                      className="h-8 w-8 p-0"
+                      data-testid={`share-project-${project.id}`}
+                    >
+                      <Link2 className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteProject(project.id);
+                      }}
+                      className="h-8 w-8 p-0"
+                      data-testid={`delete-project-${project.id}`}
+                    >
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">
-                    Created {new Date(project.created_at).toLocaleDateString()}
-                  </p>
+                </div>
+
+                {/* Project Info */}
+                <CardContent className="p-4">
+                  <h3 className="font-semibold text-lg mb-1 truncate group-hover:text-accent transition-colors" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                    {project.name}
+                  </h3>
+                  {project.content_url && (
+                    <p className="text-xs text-muted-foreground truncate mb-2">
+                      {project.content_url}
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Updated {new Date(project.created_at).toLocaleDateString()}</span>
+                  </div>
                 </CardContent>
               </Card>
             ))}
