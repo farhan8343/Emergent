@@ -233,17 +233,18 @@ async def generate_project_thumbnail(url: str) -> Optional[str]:
         logger.error(f"Failed to generate thumbnail: {e}")
         return None
 
-async def capture_full_page_screenshot(url: str) -> Optional[str]:
-    """Capture full page screenshot for canvas display"""
+async def capture_viewport_screenshot(url: str) -> Optional[str]:
+    """Capture visible viewport screenshot for canvas display"""
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page(viewport={'width': 1920, 'height': 1080})
             await page.goto(url, wait_until='networkidle', timeout=30000)
-            screenshot_bytes = await page.screenshot(full_page=True)
+            # Capture only visible viewport, not full page
+            screenshot_bytes = await page.screenshot(full_page=False)
             await browser.close()
             
-            screenshot_filename = f"{uuid.uuid4()}_full.png"
+            screenshot_filename = f"{uuid.uuid4()}_viewport.png"
             screenshot_path = UPLOAD_DIR / 'screenshots' / screenshot_filename
             
             async with aiofiles.open(screenshot_path, 'wb') as f:
@@ -251,7 +252,7 @@ async def capture_full_page_screenshot(url: str) -> Optional[str]:
             
             return f"uploads/screenshots/{screenshot_filename}"
     except Exception as e:
-        logger.error(f"Failed to capture full page screenshot: {e}")
+        logger.error(f"Failed to capture viewport screenshot: {e}")
         return None
 
 # Auth Routes
@@ -423,10 +424,8 @@ async def create_project(
                 {'$inc': {'storage_used_mb': file_size_mb}}
             )
     
-    # Generate thumbnail and full screenshot for URL projects
-    if type == 'url' and content_url:
-        thumbnail_path = await generate_project_thumbnail(content_url)
-        screenshot_path = await capture_full_page_screenshot(content_url)
+    # Don't generate screenshot during project creation - do it on-demand
+    # Thumbnail will be generated when screenshot is captured
     
     project = {
         'id': project_id,
@@ -762,13 +761,13 @@ async def get_file(file_type: str, filename: str):
     
     return FileResponse(file_path)
 
-# Screenshot capture endpoint
-@api_router.get("/projects/{project_id}/screenshot")
-async def get_project_screenshot(
+# Screenshot capture endpoint - on-demand screenshot generation
+@api_router.post("/projects/{project_id}/capture")
+async def capture_project_screenshot(
     project_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Capture and return screenshot for a project"""
+    """Capture screenshot on-demand when user opens project canvas"""
     project = await db.projects.find_one(
         {'id': project_id, 'team_id': current_user['team_id']},
         {'_id': 0}
@@ -778,21 +777,51 @@ async def get_project_screenshot(
     
     # If screenshot already exists, return it
     if project.get('screenshot_path'):
-        return {'screenshot_path': project['screenshot_path']}
+        return {
+            'screenshot_path': project['screenshot_path'],
+            'thumbnail_path': project.get('thumbnail_path'),
+            'cached': True
+        }
     
-    # If it's a URL project, capture screenshot now
+    # If it's a URL project, capture screenshot now (visible viewport only)
     if project['type'] == 'url' and project.get('content_url'):
-        screenshot_path = await capture_full_page_screenshot(project['content_url'])
+        screenshot_path = await capture_viewport_screenshot(project['content_url'])
+        thumbnail_path = await generate_project_thumbnail(project['content_url'])
         
         if screenshot_path:
-            # Update project with screenshot path
+            # Update project with screenshot and thumbnail paths
             await db.projects.update_one(
                 {'id': project_id},
-                {'$set': {'screenshot_path': screenshot_path}}
+                {'$set': {
+                    'screenshot_path': screenshot_path,
+                    'thumbnail_path': thumbnail_path
+                }}
             )
-            return {'screenshot_path': screenshot_path}
+            return {
+                'screenshot_path': screenshot_path,
+                'thumbnail_path': thumbnail_path,
+                'cached': False
+            }
     
-    return {'screenshot_path': None}
+    raise HTTPException(status_code=400, detail='Failed to capture screenshot')
+
+@api_router.get("/projects/{project_id}/screenshot")
+async def get_project_screenshot(
+    project_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get existing screenshot for a project"""
+    project = await db.projects.find_one(
+        {'id': project_id, 'team_id': current_user['team_id']},
+        {'_id': 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    
+    return {
+        'screenshot_path': project.get('screenshot_path'),
+        'thumbnail_path': project.get('thumbnail_path')
+    }
 @api_router.get("/superadmin/teams")
 async def get_all_teams(current_user: dict = Depends(get_current_user)):
     # Only allow admin@markuply.com
