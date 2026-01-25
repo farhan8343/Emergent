@@ -5,12 +5,11 @@ import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { toast } from 'sonner';
-import { Plus, FileText, Image, Globe, Trash2 } from 'lucide-react';
+import { Plus, FileText, Image, Globe, Trash2, Link2 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -19,7 +18,7 @@ export default function Dashboard() {
   const [projects, setProjects] = useState([]);
   const [team, setTeam] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createMode, setCreateMode] = useState(false);
   const [projectName, setProjectName] = useState('');
   const [projectType, setProjectType] = useState('url');
   const [contentUrl, setContentUrl] = useState('');
@@ -82,7 +81,7 @@ export default function Dashboard() {
 
       setProjects([response.data, ...projects]);
       toast.success('Project created successfully!');
-      setCreateDialogOpen(false);
+      setCreateMode(false);
       resetForm();
     } catch (error) {
       console.error('Failed to create project:', error);
@@ -103,6 +102,12 @@ export default function Dashboard() {
       console.error('Failed to delete project:', error);
       toast.error('Failed to delete project');
     }
+  };
+
+  const handleShareProject = (projectId) => {
+    const shareUrl = `${window.location.origin}/project/${projectId}`;
+    navigator.clipboard.writeText(shareUrl);
+    toast.success('Shareable link copied to clipboard!');
   };
 
   const resetForm = () => {
@@ -148,48 +153,57 @@ export default function Dashboard() {
               {projects.length} {projects.length === 1 ? 'project' : 'projects'}
             </p>
           </div>
-          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button
-                className="bg-accent text-accent-foreground hover:bg-accent/90 rounded-full px-6 transition-transform hover:scale-105 active:scale-95"
-                data-testid="create-project-btn"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                New Project
-              </Button>
-            </DialogTrigger>
-            <DialogContent data-testid="create-project-dialog">
-              <DialogHeader>
-                <DialogTitle>Create New Project</DialogTitle>
-                <DialogDescription>
-                  Upload a file or enter a URL to start reviewing
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleCreateProject} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="project-name">Project Name</Label>
-                  <Input
-                    id="project-name"
-                    placeholder="My Design Review"
-                    value={projectName}
-                    onChange={(e) => setProjectName(e.target.value)}
-                    required
-                    data-testid="project-name-input"
-                  />
-                </div>
+          <Button
+            onClick={() => setCreateMode(!createMode)}
+            className="bg-accent text-accent-foreground hover:bg-accent/90 rounded-full px-6 transition-transform hover:scale-105 active:scale-95"
+            data-testid="create-project-btn"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            {createMode ? 'Cancel' : 'New Project'}
+          </Button>
+        </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="project-type">Type</Label>
-                  <Select value={projectType} onValueChange={setProjectType}>
-                    <SelectTrigger data-testid="project-type-select">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="url" data-testid="type-option-url">Website URL</SelectItem>
-                      <SelectItem value="pdf" data-testid="type-option-pdf">PDF Document</SelectItem>
-                      <SelectItem value="image" data-testid="type-option-image">Image (JPG/PNG)</SelectItem>
-                    </SelectContent>
-                  </Select>
+        {/* Quick Create Form */}
+        {createMode && (
+          <Card className="mb-8 border-border/40 border-2 border-accent/20">
+            <CardHeader>
+              <CardTitle style={{ fontFamily: 'Outfit, sans-serif' }}>Create New Project</CardTitle>
+              <CardDescription>Choose project type and add content</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateProject} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="project-name">Project Name</Label>
+                    <Input
+                      id="project-name"
+                      placeholder="My Design Review"
+                      value={projectName}
+                      onChange={(e) => setProjectName(e.target.value)}
+                      required
+                      data-testid="project-name-input"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Type</Label>
+                    <Tabs value={projectType} onValueChange={setProjectType} className="w-full">
+                      <TabsList className="grid w-full grid-cols-3">
+                        <TabsTrigger value="url" data-testid="type-tab-url">
+                          <Globe className="w-4 h-4 mr-2" />
+                          URL
+                        </TabsTrigger>
+                        <TabsTrigger value="pdf" data-testid="type-tab-pdf">
+                          <FileText className="w-4 h-4 mr-2" />
+                          PDF
+                        </TabsTrigger>
+                        <TabsTrigger value="image" data-testid="type-tab-image">
+                          <Image className="w-4 h-4 mr-2" />
+                          Image
+                        </TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                  </div>
                 </div>
 
                 {projectType === 'url' ? (
@@ -216,6 +230,11 @@ export default function Dashboard() {
                       required
                       data-testid="project-file-input"
                     />
+                    {file && (
+                      <p className="text-sm text-muted-foreground">
+                        Selected: {file.name}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -228,9 +247,9 @@ export default function Dashboard() {
                   {creating ? 'Creating...' : 'Create Project'}
                 </Button>
               </form>
-            </DialogContent>
-          </Dialog>
-        </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Plan Info */}
         {team && (
@@ -274,7 +293,7 @@ export default function Dashboard() {
                 Create your first project to start collecting feedback
               </p>
               <Button
-                onClick={() => setCreateDialogOpen(true)}
+                onClick={() => setCreateMode(true)}
                 className="bg-accent text-accent-foreground hover:bg-accent/90 rounded-full"
                 data-testid="empty-create-btn"
               >
@@ -294,12 +313,12 @@ export default function Dashboard() {
               >
                 <CardHeader>
                   <div className="flex items-start justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center">
+                    <div className="flex items-center space-x-3 flex-1">
+                      <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center flex-shrink-0">
                         {getProjectIcon(project.type)}
                       </div>
-                      <div>
-                        <CardTitle className="text-lg group-hover:text-accent transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <CardTitle className="text-lg group-hover:text-accent transition-colors truncate">
                           {project.name}
                         </CardTitle>
                         <CardDescription className="capitalize">
@@ -307,18 +326,30 @@ export default function Dashboard() {
                         </CardDescription>
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteProject(project.id);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity"
-                      data-testid={`delete-project-${project.id}`}
-                    >
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
+                    <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleShareProject(project.id);
+                        }}
+                        data-testid={`share-project-${project.id}`}
+                      >
+                        <Link2 className="w-4 h-4 text-accent" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteProject(project.id);
+                        }}
+                        data-testid={`delete-project-${project.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>

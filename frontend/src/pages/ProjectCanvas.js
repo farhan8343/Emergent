@@ -8,8 +8,9 @@ import { Card } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { ScrollArea } from '../components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, MessageSquare, X } from 'lucide-react';
+import { ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, Share2, Eye, MessageCircle } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -24,7 +25,8 @@ export default function ProjectCanvas() {
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [loading, setLoading] = useState(true);
-  const [isGuest, setIsGuest] = useState(false);
+  const [mode, setMode] = useState('browse'); // 'browse' or 'comment'
+  const [viewportSize, setViewportSize] = useState('desktop'); // 'desktop', 'tablet', 'mobile'
   const canvasRef = useRef(null);
   const { user, getAuthHeaders } = useAuth();
   const navigate = useNavigate();
@@ -75,7 +77,7 @@ export default function ProjectCanvas() {
   };
 
   const handleCanvasClick = async (e) => {
-    if (!canvasRef.current) return;
+    if (mode !== 'comment' || !canvasRef.current) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -98,7 +100,9 @@ export default function ProjectCanvas() {
 
   const handlePinClick = (pin, e) => {
     e.stopPropagation();
-    setSelectedPin(pin);
+    if (mode === 'comment') {
+      setSelectedPin(pin);
+    }
   };
 
   const handleAddComment = async (e) => {
@@ -154,6 +158,24 @@ export default function ProjectCanvas() {
     }
   };
 
+  const handleShare = () => {
+    const shareUrl = `${window.location.origin}/project/${id}`;
+    navigator.clipboard.writeText(shareUrl);
+    toast.success('Shareable link copied to clipboard!');
+  };
+
+  const getViewportWidth = () => {
+    switch (viewportSize) {
+      case 'mobile':
+        return '375px';
+      case 'tablet':
+        return '768px';
+      case 'desktop':
+      default:
+        return '100%';
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -175,80 +197,9 @@ export default function ProjectCanvas() {
       <Navbar />
 
       <div className="flex h-[calc(100vh-4rem)]">
-        {/* Canvas Area */}
-        <div className="flex-1 p-4 overflow-auto">
-          <div className="mb-4 flex items-center justify-between">
-            <Button
-              variant="ghost"
-              onClick={() => navigate('/dashboard')}
-              data-testid="canvas-back-btn"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Projects
-            </Button>
-            <h1 className="text-2xl font-bold" style={{ fontFamily: 'Outfit, sans-serif' }} data-testid="project-title">
-              {project.name}
-            </h1>
-            <div className="w-24"></div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-            <div
-              ref={canvasRef}
-              className="markup-canvas relative"
-              onClick={handleCanvasClick}
-              style={{ minHeight: '600px' }}
-              data-testid="markup-canvas"
-            >
-              {project.type === 'url' && project.content_url && (
-                <iframe
-                  src={project.content_url}
-                  className="w-full h-[800px] border-0"
-                  title={project.name}
-                  data-testid="canvas-iframe"
-                />
-              )}
-              {project.type === 'image' && project.file_path && (
-                <img
-                  src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
-                  alt={project.name}
-                  className="max-w-full h-auto"
-                  data-testid="canvas-image"
-                />
-              )}
-              {project.type === 'pdf' && project.file_path && (
-                <embed
-                  src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
-                  type="application/pdf"
-                  className="w-full h-[800px]"
-                  data-testid="canvas-pdf"
-                />
-              )}
-
-              {/* Pin Markers */}
-              {pins.map((pin, index) => (
-                <div
-                  key={pin.id}
-                  className={`pin-marker w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer z-50 ${
-                    pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
-                  } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30' : ''}`}
-                  style={{
-                    left: `${pin.x}%`,
-                    top: `${pin.y}%`
-                  }}
-                  onClick={(e) => handlePinClick(pin, e)}
-                  data-testid={`pin-marker-${index}`}
-                >
-                  {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : index + 1}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Comments Sidebar */}
-        <div className="w-96 bg-white border-l border-border/40 flex flex-col" data-testid="comments-sidebar">
-          {selectedPin ? (
+        {/* Comments Sidebar - LEFT */}
+        <div className="w-80 bg-white border-r border-border/40 flex flex-col" data-testid="comments-sidebar">
+          {selectedPin && mode === 'comment' ? (
             <>
               <div className="p-4 border-b border-border/40 flex items-center justify-between">
                 <div>
@@ -364,14 +315,160 @@ export default function ProjectCanvas() {
                   <MessageSquare className="w-8 h-8 text-accent" />
                 </div>
                 <h3 className="font-semibold mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                  Select a pin
+                  {mode === 'browse' ? 'Switch to Comment Mode' : 'Select a pin'}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Click on a pin to view and add comments
+                  {mode === 'browse' 
+                    ? 'Click Comment tab to add feedback'
+                    : 'Click on a pin to view and add comments'}
                 </p>
               </div>
             </div>
           )}
+        </div>
+
+        {/* Canvas Area - CENTER */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Toolbar */}
+          <div className="bg-white border-b border-border/40 p-3 flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/dashboard')}
+                data-testid="canvas-back-btn"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back
+              </Button>
+              <div className="h-6 w-px bg-border"></div>
+              <h1 className="text-lg font-bold" style={{ fontFamily: 'Outfit, sans-serif' }} data-testid="project-title">
+                {project.name}
+              </h1>
+            </div>
+
+            <div className="flex items-center space-x-3">
+              {/* Mode Tabs */}
+              <Tabs value={mode} onValueChange={setMode} className="w-auto">
+                <TabsList className="bg-secondary">
+                  <TabsTrigger value="browse" className="flex items-center space-x-2" data-testid="browse-tab">
+                    <Eye className="w-4 h-4" />
+                    <span>Browse</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="comment" className="flex items-center space-x-2" data-testid="comment-tab">
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Comment</span>
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              <div className="h-6 w-px bg-border"></div>
+
+              {/* Viewport Size Selector */}
+              <div className="flex items-center space-x-1 bg-secondary rounded-lg p-1">
+                <Button
+                  size="sm"
+                  variant={viewportSize === 'desktop' ? 'default' : 'ghost'}
+                  onClick={() => setViewportSize('desktop')}
+                  className="h-8 px-3"
+                  data-testid="desktop-view"
+                >
+                  <Monitor className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant={viewportSize === 'tablet' ? 'default' : 'ghost'}
+                  onClick={() => setViewportSize('tablet')}
+                  className="h-8 px-3"
+                  data-testid="tablet-view"
+                >
+                  <Tablet className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant={viewportSize === 'mobile' ? 'default' : 'ghost'}
+                  onClick={() => setViewportSize('mobile')}
+                  className="h-8 px-3"
+                  data-testid="mobile-view"
+                >
+                  <Smartphone className="w-4 h-4" />
+                </Button>
+              </div>
+
+              <div className="h-6 w-px bg-border"></div>
+
+              {/* Share Button */}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleShare}
+                data-testid="share-btn"
+              >
+                <Share2 className="w-4 h-4 mr-2" />
+                Share
+              </Button>
+            </div>
+          </div>
+
+          {/* Canvas Content */}
+          <div className="flex-1 overflow-auto bg-secondary/30 p-8">
+            <div className="mx-auto" style={{ width: getViewportWidth(), maxWidth: '100%' }}>
+              <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div
+                  ref={canvasRef}
+                  className="markup-canvas relative"
+                  onClick={handleCanvasClick}
+                  style={{ minHeight: '600px', cursor: mode === 'comment' ? 'crosshair' : 'default' }}
+                  data-testid="markup-canvas"
+                >
+                  {project.type === 'url' && project.content_url && (
+                    <iframe
+                      src={project.content_url}
+                      className="w-full border-0"
+                      style={{ height: '800px' }}
+                      title={project.name}
+                      data-testid="canvas-iframe"
+                    />
+                  )}
+                  {project.type === 'image' && project.file_path && (
+                    <img
+                      src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
+                      alt={project.name}
+                      className="w-full h-auto"
+                      data-testid="canvas-image"
+                    />
+                  )}
+                  {project.type === 'pdf' && project.file_path && (
+                    <embed
+                      src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
+                      type="application/pdf"
+                      className="w-full"
+                      style={{ height: '800px' }}
+                      data-testid="canvas-pdf"
+                    />
+                  )}
+
+                  {/* Pin Markers */}
+                  {pins.map((pin, index) => (
+                    <div
+                      key={pin.id}
+                      className={`pin-marker w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer z-50 ${
+                        pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
+                      } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30' : ''}`}
+                      style={{
+                        left: `${pin.x}%`,
+                        top: `${pin.y}%`
+                      }}
+                      onClick={(e) => handlePinClick(pin, e)}
+                      data-testid={`pin-marker-${index}`}
+                    >
+                      {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : index + 1}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
