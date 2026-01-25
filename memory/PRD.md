@@ -7,7 +7,6 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 - **Frontend**: React, Tailwind CSS, Shadcn UI
 - **Backend**: FastAPI, Python
 - **Database**: MongoDB (Motor async driver)
-- **Screenshot Engine**: Playwright (headless Chromium)
 - **Authentication**: JWT-based
 
 ## User Personas
@@ -24,13 +23,13 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 
 ### Project Management
 - [x] Create projects from URLs, images, and PDFs
-- [x] On-demand screenshot capture (visible viewport only)
-- [x] Thumbnail generation for dashboard grid view
+- [x] **Live website preview via iframe** (no screenshots needed)
+- [x] Responsive viewport controls (Desktop/Tablet/Mobile)
 - [x] Project search and sorting (newest, oldest, name)
 
 ### Pin-Based Commenting
-- [x] Click on screenshot to create pins
-- [x] Pin positions relative to image (scroll-aware)
+- [x] Click on live website to create pins
+- [x] Pin positions relative to canvas (scroll-aware)
 - [x] Thread-based comments per pin
 - [x] File attachments on comments
 - [x] Pin status management (open/resolved)
@@ -56,16 +55,16 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 - React frontend with Shadcn UI components
 - File upload and serving system
 
-### Phase 2: Screenshot Engine ✅
-- Playwright integration with headless Chromium
-- PLAYWRIGHT_BROWSERS_PATH environment variable setup
-- On-demand screenshot capture (POST /api/projects/{id}/capture)
-- Visible viewport screenshots (not full page)
-- Thumbnail generation for dashboard
+### Phase 2: Live Website Preview ✅
+- **Iframe-based live website embedding**
+- Responsive viewport controls (Desktop 100%, Tablet 768px, Mobile 375px)
+- Transparent overlay for pin placement in Comment mode
+- Error detection for sites that block embedding
+- "Open in New Tab" fallback for blocked sites
 
 ### Phase 3: Pin-Based Comments ✅
-- Pin creation by clicking on screenshot
-- Position calculation relative to image element
+- Pin creation by clicking on live preview
+- Position calculation relative to canvas element
 - Comment threads per pin
 - File attachment support
 - Pin status (resolve/reopen)
@@ -96,8 +95,6 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 - GET /api/projects (list)
 - GET /api/projects/{id}
 - DELETE /api/projects/{id}
-- POST /api/projects/{id}/capture (on-demand screenshot)
-- GET /api/projects/{id}/screenshot
 
 ### Pins & Comments
 - POST /api/pins
@@ -151,8 +148,6 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
   "type": "url|image|pdf",
   "content_url": "string|null",
   "file_path": "string|null",
-  "screenshot_path": "string|null",
-  "thumbnail_path": "string|null",
   "created_by": "uuid",
   "created_at": "datetime"
 }
@@ -182,7 +177,6 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
   "guest_email": "string|null",
   "content": "string",
   "attachment_path": "string|null",
-  "screenshot_path": "string|null",
   "created_at": "datetime"
 }
 ```
@@ -192,7 +186,7 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 - Password: test123
 
 ## Known Limitations
-1. Cloudflare-protected sites may block Playwright screenshots
+1. **Sites blocking iframes**: Many websites (including brandlume.com) block embedding via X-Frame-Options or CSP headers. These sites show an error message with "Open in New Tab" option.
 2. Stripe payment integration not implemented (MOCKED)
 3. Email notifications log to console only (MOCKED)
 4. Plan limits enforced but not strictly validated
@@ -221,16 +215,17 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 
 ## Architecture Notes
 
-### Screenshot Flow
-1. User creates project (instant, no screenshot)
+### Live Website Preview Flow
+1. User creates project with URL
 2. User opens project canvas
-3. Frontend calls POST /api/projects/{id}/capture
-4. Backend uses Playwright to capture visible viewport
-5. Screenshot saved to /uploads/screenshots/
-6. Thumbnail generated (400x300)
-7. Project updated with paths
+3. Iframe loads the live website directly
+4. In Comment mode, transparent overlay captures clicks
+5. Pin positions stored as percentage of canvas dimensions
+
+### Important Security Note
+The iframe uses `sandbox="allow-scripts allow-same-origin allow-forms allow-popups"` to allow website functionality while maintaining security.
 
 ### Pin Position Calculation
-- Pins stored as percentage (0-100%) of image dimensions
-- Position calculated relative to image element bounding box
-- Pins render inside image container (scroll with content)
+- Pins stored as percentage (0-100%) of canvas dimensions
+- Position calculated relative to canvas element bounding box
+- Pins render as absolute positioned elements over the iframe
