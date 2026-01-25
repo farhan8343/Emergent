@@ -166,6 +166,7 @@ async def get_current_user_optional(credentials: Optional[HTTPAuthorizationCrede
         return user
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         return None
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     try:
         token = credentials.credentials
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
