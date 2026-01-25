@@ -30,8 +30,6 @@ export default function ProjectCanvas() {
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [loading, setLoading] = useState(true);
-  const [screenshotLoading, setScreenshotLoading] = useState(false);
-  const [screenshotUrl, setScreenshotUrl] = useState(null);
   const [mode, setMode] = useState('browse');
   const [viewportSize, setViewportSize] = useState('desktop');
   const [showResolved, setShowResolved] = useState(false);
@@ -39,9 +37,10 @@ export default function ProjectCanvas() {
   const [sortOrder, setSortOrder] = useState('newest');
   const [sidebarView, setSidebarView] = useState('overview');
   const [selectedFile, setSelectedFile] = useState(null);
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [iframeError, setIframeError] = useState(false);
   const canvasRef = useRef(null);
-  const imageRef = useRef(null);
+  const iframeRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const fileInputRef = useRef(null);
   const { user, getAuthHeaders } = useAuth();
