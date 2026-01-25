@@ -470,7 +470,7 @@ async def update_pin_status(pin_id: str, status: str, current_user: dict = Depen
 @api_router.post("/comments", response_model=Comment)
 async def create_comment(
     comment_data: CommentCreate,
-    current_user: Optional[dict] = None
+    current_user: Optional[dict] = Depends(get_current_user_optional)
 ):
     # Determine if user is authenticated or guest
     is_guest = current_user is None
