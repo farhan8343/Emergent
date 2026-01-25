@@ -10,10 +10,11 @@ import { Textarea } from '../components/ui/textarea';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Switch } from '../components/ui/switch';
 import { Label } from '../components/ui/label';
+import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, Share2, Eye, MessageCircle, Search, ArrowUpDown } from 'lucide-react';
+import { ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, Share2, Eye, MessageCircle, Search, ArrowUpDown, ChevronLeft } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -22,6 +23,7 @@ export default function ProjectCanvas() {
   const { id } = useParams();
   const [project, setProject] = useState(null);
   const [pins, setPins] = useState([]);
+  const [allComments, setAllComments] = useState({}); // Store comments by pin_id
   const [selectedPin, setSelectedPin] = useState(null);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
@@ -33,6 +35,7 @@ export default function ProjectCanvas() {
   const [showResolved, setShowResolved] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('newest');
+  const [sidebarView, setSidebarView] = useState('overview'); // 'overview' or 'thread'
   const canvasRef = useRef(null);
   const { user, getAuthHeaders } = useAuth();
   const navigate = useNavigate();
@@ -43,11 +46,18 @@ export default function ProjectCanvas() {
     }
   }, [id]);
 
+  // Fetch all comments for all pins
+  useEffect(() => {
+    if (pins.length > 0) {
+      fetchAllComments();
+    }
+  }, [pins]);
+
+  // Fetch comments for selected pin
   useEffect(() => {
     if (selectedPin?.id) {
       fetchComments(selectedPin.id);
-    } else {
-      setComments([]);
+      setSidebarView('thread');
     }
   }, [selectedPin?.id]);
 
@@ -77,17 +87,36 @@ export default function ProjectCanvas() {
     }
   };
 
+  const fetchAllComments = async () => {
+    try {
+      const commentsMap = {};
+      await Promise.all(
+        pins.map(async (pin) => {
+          try {
+            const response = await axios.get(`${API}/comments/${pin.id}`);
+            commentsMap[pin.id] = response.data;
+          } catch (error) {
+            commentsMap[pin.id] = [];
+          }
+        })
+      );
+      setAllComments(commentsMap);
+    } catch (error) {
+      console.error('Failed to fetch all comments:', error);
+    }
+  };
+
   const fetchComments = async (pinId) => {
     try {
       const response = await axios.get(`${API}/comments/${pinId}`);
       setComments(response.data);
+      setAllComments(prev => ({ ...prev, [pinId]: response.data }));
     } catch (error) {
       console.error('Failed to fetch comments:', error);
     }
   };
 
   const handleCanvasClick = async (e) => {
-    // Only create pins in comment mode and if user is authenticated
     if (mode !== 'comment' || !canvasRef.current || !user) {
       if (mode === 'comment' && !user) {
         toast.error('Please login to add pins');
@@ -95,7 +124,6 @@ export default function ProjectCanvas() {
       return;
     }
 
-    // Don't create pin if clicking on an existing pin
     if (e.target.closest('.pin-marker')) {
       return;
     }
@@ -125,6 +153,12 @@ export default function ProjectCanvas() {
     setSelectedPin(pin);
   };
 
+  const handleBackToOverview = () => {
+    setSelectedPin(null);
+    setSidebarView('overview');
+    setSearchQuery('');
+  };
+
   const handleAddComment = async (e) => {
     e.preventDefault();
     if (!selectedPin) return;
@@ -150,6 +184,10 @@ export default function ProjectCanvas() {
       });
 
       setComments(prevComments => [...prevComments, response.data]);
+      setAllComments(prev => ({
+        ...prev,
+        [selectedPin.id]: [...(prev[selectedPin.id] || []), response.data]
+      }));
       setNewComment('');
       toast.success('Comment added');
     } catch (error) {
@@ -175,9 +213,8 @@ export default function ProjectCanvas() {
       setSelectedPin(prev => ({ ...prev, status: newStatus }));
       toast.success(`Pin ${newStatus}`);
       
-      // Close sidebar if pin was resolved and showResolved is false
       if (newStatus === 'resolved' && !showResolved) {
-        setSelectedPin(null);
+        handleBackToOverview();
       }
     } catch (error) {
       console.error('Failed to update pin status:', error);
@@ -203,36 +240,41 @@ export default function ProjectCanvas() {
     }
   };
 
-  // Filter pins: hide resolved unless toggle is on
   const visiblePins = useMemo(() => {
     if (mode !== 'comment') return [];
     if (showResolved) return pins;
     return pins.filter(pin => pin.status === 'open');
   }, [pins, showResolved, mode]);
 
-  // Filter and sort comments
-  const filteredAndSortedComments = useMemo(() => {
-    let filtered = comments;
-
-    // Search filter
-    if (searchQuery.trim()) {
-      filtered = filtered.filter(comment =>
+  // Search pins in overview
+  const filteredPins = useMemo(() => {
+    if (!searchQuery.trim()) return visiblePins;
+    
+    return visiblePins.filter(pin => {
+      const pinComments = allComments[pin.id] || [];
+      const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
+      
+      // Search in pin number
+      if (pinNumber.toString().includes(searchQuery)) return true;
+      
+      // Search in comments
+      return pinComments.some(comment => 
         comment.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
         comment.author_name.toLowerCase().includes(searchQuery.toLowerCase())
       );
-    }
+    });
+  }, [visiblePins, searchQuery, allComments, pins]);
 
-    // Sort
-    const sorted = [...filtered].sort((a, b) => {
+  // Filter and sort comments in thread view
+  const filteredAndSortedComments = useMemo(() => {
+    const sorted = [...comments].sort((a, b) => {
       const dateA = new Date(a.created_at);
       const dateB = new Date(b.created_at);
       return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
     });
-
     return sorted;
-  }, [comments, searchQuery, sortOrder]);
+  }, [comments, sortOrder]);
 
-  // Count pins
   const pinCounts = useMemo(() => {
     return {
       total: pins.length,
@@ -264,74 +306,131 @@ export default function ProjectCanvas() {
       <div className="flex h-[calc(100vh-4rem)]">
         {/* Comments Sidebar - LEFT */}
         <div className="w-80 bg-white border-r border-border/40 flex flex-col" data-testid="comments-sidebar">
-          {/* Show Resolved Toggle - Only in Comment Mode */}
-          {mode === 'comment' && (
-            <div className="p-4 border-b border-border/40">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label htmlFor="show-resolved" className="text-sm font-medium cursor-pointer">
-                    Show Resolved
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    {pinCounts.open} pending, {pinCounts.resolved} resolved
-                  </p>
-                </div>
-                <Switch
-                  id="show-resolved"
-                  checked={showResolved}
-                  onCheckedChange={setShowResolved}
-                  data-testid="show-resolved-toggle"
-                />
-              </div>
-            </div>
-          )}
-
-          {selectedPin && mode === 'comment' ? (
-            <>
-              <div className="p-4 border-b border-border/40">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h3 className="font-semibold" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                      Pin #{pins.findIndex(p => p.id === selectedPin.id) + 1}
-                    </h3>
-                    <p className="text-xs text-muted-foreground capitalize">
-                      {selectedPin.status}
-                    </p>
+          {mode === 'comment' ? (
+            sidebarView === 'overview' ? (
+              // OVERVIEW: List of all pins
+              <>
+                <div className="p-4 border-b border-border/40">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h3 className="font-semibold" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                        All Comments
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        {pinCounts.open} pending, {pinCounts.resolved} resolved
+                      </p>
+                    </div>
+                    <Switch
+                      id="show-resolved"
+                      checked={showResolved}
+                      onCheckedChange={setShowResolved}
+                      data-testid="show-resolved-toggle"
+                    />
                   </div>
-                  <div className="flex items-center space-x-2">
-                    {user && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handleResolvePin}
-                        data-testid="resolve-pin-btn"
-                      >
-                        {selectedPin.status === 'open' ? 'Resolve' : 'Reopen'}
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setSelectedPin(null)}
-                      data-testid="close-pin-btn"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Search and Sort */}
-                <div className="space-y-2">
+                  
+                  {/* Search all pins */}
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search comments..."
+                      placeholder="Search pins & comments..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-9 h-9"
-                      data-testid="search-comments"
+                      data-testid="search-pins"
                     />
                   </div>
+                </div>
+
+                <ScrollArea className="flex-1">
+                  <div className="p-4 space-y-2">
+                    {filteredPins.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-8">
+                        {searchQuery ? 'No pins found' : visiblePins.length === 0 ? 'No pins yet. Click canvas to create.' : 'No pins to show'}
+                      </p>
+                    ) : (
+                      filteredPins.map((pin) => {
+                        const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
+                        const pinComments = allComments[pin.id] || [];
+                        const lastComment = pinComments[pinComments.length - 1];
+                        
+                        return (
+                          <Card
+                            key={pin.id}
+                            className="p-3 border-border/40 cursor-pointer hover:shadow-md transition-shadow"
+                            onClick={() => setSelectedPin(pin)}
+                            data-testid={`pin-overview-${pin.id}`}
+                          >
+                            <div className="flex items-start space-x-3">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-xs ${
+                                pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
+                              }`}>
+                                {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-sm font-semibold">
+                                    Pin #{pinNumber}
+                                  </span>
+                                  <Badge variant={pin.status === 'resolved' ? 'secondary' : 'default'} className="text-xs">
+                                    {pinComments.length}
+                                  </Badge>
+                                </div>
+                                {lastComment ? (
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {lastComment.author_name}: {lastComment.content}
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground italic">
+                                    No comments yet
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </Card>
+                        );
+                      })
+                    )}
+                  </div>
+                </ScrollArea>
+              </>
+            ) : (
+              // THREAD: Single pin comments
+              <>
+                <div className="p-4 border-b border-border/40">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleBackToOverview}
+                        data-testid="back-to-overview"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </Button>
+                      <div>
+                        <h3 className="font-semibold" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                          Pin #{pins.findIndex(p => p.id === selectedPin?.id) + 1}
+                        </h3>
+                        <p className="text-xs text-muted-foreground capitalize">
+                          {selectedPin?.status}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      {user && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleResolvePin}
+                          data-testid="resolve-pin-btn"
+                        >
+                          {selectedPin?.status === 'open' ? 'Resolve' : 'Reopen'}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sort comments */}
                   <Select value={sortOrder} onValueChange={setSortOrder}>
                     <SelectTrigger className="h-9" data-testid="sort-comments">
                       <ArrowUpDown className="w-4 h-4 mr-2" />
@@ -343,84 +442,84 @@ export default function ProjectCanvas() {
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
 
-              <ScrollArea className="flex-1 p-4">
-                <div className="space-y-4">
-                  {filteredAndSortedComments.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-8">
-                      {searchQuery ? 'No comments found' : 'No comments yet. Be the first to comment!'}
-                    </p>
-                  ) : (
-                    filteredAndSortedComments.map((comment) => (
-                      <Card key={comment.id} className="p-3 border-border/40" data-testid={`comment-${comment.id}`}>
-                        <div className="flex items-start space-x-2">
-                          <div className="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center flex-shrink-0">
-                            <span className="text-xs font-semibold text-accent">
-                              {comment.author_name.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-2 mb-1">
-                              <p className="text-sm font-semibold">{comment.author_name}</p>
-                              {comment.author_type === 'guest' && (
-                                <span className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded">
-                                  Guest
-                                </span>
-                              )}
+                <ScrollArea className="flex-1 p-4">
+                  <div className="space-y-4">
+                    {filteredAndSortedComments.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-8">
+                        No comments yet. Be the first to comment!
+                      </p>
+                    ) : (
+                      filteredAndSortedComments.map((comment) => (
+                        <Card key={comment.id} className="p-3 border-border/40" data-testid={`comment-${comment.id}`}>
+                          <div className="flex items-start space-x-2">
+                            <div className="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center flex-shrink-0">
+                              <span className="text-xs font-semibold text-accent">
+                                {comment.author_name.charAt(0).toUpperCase()}
+                              </span>
                             </div>
-                            <p className="text-sm text-foreground">{comment.content}</p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {new Date(comment.created_at).toLocaleString()}
-                            </p>
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2 mb-1">
+                                <p className="text-sm font-semibold">{comment.author_name}</p>
+                                {comment.author_type === 'guest' && (
+                                  <span className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded">
+                                    Guest
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-foreground">{comment.content}</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {new Date(comment.created_at).toLocaleString()}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      </Card>
-                    ))
-                  )}
-                </div>
-              </ScrollArea>
+                        </Card>
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
 
-              <div className="p-4 border-t border-border/40">
-                <form onSubmit={handleAddComment} className="space-y-3">
-                  {!user && (
-                    <>
-                      <Input
-                        placeholder="Your name"
-                        value={guestName}
-                        onChange={(e) => setGuestName(e.target.value)}
-                        required
-                        data-testid="guest-name-input"
-                      />
-                      <Input
-                        type="email"
-                        placeholder="Your email"
-                        value={guestEmail}
-                        onChange={(e) => setGuestEmail(e.target.value)}
-                        required
-                        data-testid="guest-email-input"
-                      />
-                    </>
-                  )}
-                  <Textarea
-                    placeholder="Add a comment..."
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    required
-                    rows={3}
-                    data-testid="comment-input"
-                  />
-                  <Button
-                    type="submit"
-                    className="w-full bg-accent text-accent-foreground hover:bg-accent/90 rounded-full"
-                    data-testid="add-comment-btn"
-                  >
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    Add Comment
-                  </Button>
-                </form>
-              </div>
-            </>
+                <div className="p-4 border-t border-border/40">
+                  <form onSubmit={handleAddComment} className="space-y-3">
+                    {!user && (
+                      <>
+                        <Input
+                          placeholder="Your name"
+                          value={guestName}
+                          onChange={(e) => setGuestName(e.target.value)}
+                          required
+                          data-testid="guest-name-input"
+                        />
+                        <Input
+                          type="email"
+                          placeholder="Your email"
+                          value={guestEmail}
+                          onChange={(e) => setGuestEmail(e.target.value)}
+                          required
+                          data-testid="guest-email-input"
+                        />
+                      </>
+                    )}
+                    <Textarea
+                      placeholder="Add a comment..."
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      required
+                      rows={3}
+                      data-testid="comment-input"
+                    />
+                    <Button
+                      type="submit"
+                      className="w-full bg-accent text-accent-foreground hover:bg-accent/90 rounded-full"
+                      data-testid="add-comment-btn"
+                    >
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      Add Comment
+                    </Button>
+                  </form>
+                </div>
+              </>
+            )
           ) : (
             <div className="flex-1 flex items-center justify-center p-8 text-center">
               <div>
@@ -428,14 +527,10 @@ export default function ProjectCanvas() {
                   <MessageSquare className="w-8 h-8 text-accent" />
                 </div>
                 <h3 className="font-semibold mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                  {mode === 'browse' ? 'Switch to Comment Mode' : visiblePins.length === 0 ? 'No pins yet' : 'Select a pin'}
+                  Switch to Comment Mode
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  {mode === 'browse' 
-                    ? 'Click Comment tab to add feedback'
-                    : visiblePins.length === 0
-                    ? 'Click on canvas to create your first pin'
-                    : 'Click on a pin to view and add comments'}
+                  Click Comment tab to view and manage feedback
                 </p>
               </div>
             </div>
@@ -444,7 +539,6 @@ export default function ProjectCanvas() {
 
         {/* Canvas Area - CENTER */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Toolbar */}
           <div className="bg-white border-b border-border/40 p-3 flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <Button
@@ -463,7 +557,6 @@ export default function ProjectCanvas() {
             </div>
 
             <div className="flex items-center space-x-3">
-              {/* Mode Tabs */}
               <Tabs value={mode} onValueChange={setMode} className="w-auto">
                 <TabsList className="bg-secondary">
                   <TabsTrigger value="browse" className="flex items-center space-x-2" data-testid="browse-tab">
@@ -479,7 +572,6 @@ export default function ProjectCanvas() {
 
               <div className="h-6 w-px bg-border"></div>
 
-              {/* Viewport Size Selector */}
               <div className="flex items-center space-x-1 bg-secondary rounded-lg p-1">
                 <Button
                   size="sm"
@@ -512,7 +604,6 @@ export default function ProjectCanvas() {
 
               <div className="h-6 w-px bg-border"></div>
 
-              {/* Share Button */}
               <Button
                 size="sm"
                 variant="outline"
@@ -525,7 +616,6 @@ export default function ProjectCanvas() {
             </div>
           </div>
 
-          {/* Canvas Content */}
           <div className="flex-1 overflow-auto bg-secondary/30 p-8">
             <div className="mx-auto" style={{ width: getViewportWidth(), maxWidth: '100%' }}>
               <div className="bg-white rounded-xl shadow-lg overflow-hidden">
@@ -542,8 +632,8 @@ export default function ProjectCanvas() {
                   {project.type === 'url' && project.content_url && (
                     <iframe
                       src={project.content_url}
-                      className="w-full border-0 pointer-events-none"
-                      style={{ height: '800px' }}
+                      className="w-full border-0"
+                      style={{ height: '800px', pointerEvents: 'none' }}
                       title={project.name}
                       data-testid="canvas-iframe"
                     />
@@ -560,13 +650,12 @@ export default function ProjectCanvas() {
                     <embed
                       src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
                       type="application/pdf"
-                      className="w-full pointer-events-none"
-                      style={{ height: '800px' }}
+                      className="w-full"
+                      style={{ height: '800px', pointerEvents: 'none' }}
                       data-testid="canvas-pdf"
                     />
                   )}
 
-                  {/* Pin Markers - Show only in comment mode */}
                   {visiblePins.map((pin, index) => {
                     const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
                     return (
