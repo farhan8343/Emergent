@@ -129,7 +129,13 @@ export default function ProjectCanvas() {
       return;
     }
 
-    if (e.target.closest('.pin-marker') || e.target.closest('.comment-input-popup')) {
+    // Don't create pin if clicking on existing markers or popup
+    const target = e.target;
+    if (target.closest('.pin-marker') || 
+        target.closest('.comment-input-popup') ||
+        target.tagName === 'BUTTON' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'INPUT') {
       return;
     }
 
