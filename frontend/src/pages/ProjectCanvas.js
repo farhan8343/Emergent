@@ -282,7 +282,7 @@ export default function ProjectCanvas() {
     try {
       const newStatus = selectedPin.status === 'open' ? 'resolved' : 'open';
       await axios.put(
-        `${API}/pins/${selectedPin.id}/status?status=${newStatus}`,
+        `${API}/pins/${selectedPin.id}/status?new_status=${newStatus}`,
         {},
         { headers: getAuthHeaders() }
       );
