@@ -449,7 +449,7 @@ export default function ProjectCanvas() {
 
                 <ScrollArea className="flex-1 p-4">
                   <div className="space-y-4">
-                    {filteredAndSortedComments.length === 0 ? (
+                    {comments.length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-8">
                         No comments yet. Be the first to comment!
                       </p>
