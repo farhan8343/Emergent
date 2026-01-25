@@ -96,6 +96,7 @@ class Project(BaseModel):
     content_url: Optional[str] = None
     file_path: Optional[str] = None
     thumbnail_path: Optional[str] = None
+    screenshot_path: Optional[str] = None
     created_by: str
     created_at: str
 
