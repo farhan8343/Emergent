@@ -8,6 +8,8 @@ import { Card } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { ScrollArea } from '../components/ui/scroll-area';
+import { Switch } from '../components/ui/switch';
+import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
@@ -28,28 +30,26 @@ export default function ProjectCanvas() {
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState('browse');
   const [viewportSize, setViewportSize] = useState('desktop');
-  const [commentFilter, setCommentFilter] = useState('all'); // 'all', 'open', 'resolved'
+  const [showResolved, setShowResolved] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortOrder, setSortOrder] = useState('newest'); // 'newest', 'oldest'
+  const [sortOrder, setSortOrder] = useState('newest');
   const canvasRef = useRef(null);
   const { user, getAuthHeaders } = useAuth();
   const navigate = useNavigate();
 
-  // Fetch project data only once on mount
   useEffect(() => {
     if (id) {
       fetchProject();
     }
-  }, [id]); // Only depend on id
+  }, [id]);
 
-  // Fetch comments when selectedPin changes
   useEffect(() => {
     if (selectedPin?.id) {
       fetchComments(selectedPin.id);
     } else {
       setComments([]);
     }
-  }, [selectedPin?.id]); // Only depend on pin id
+  }, [selectedPin?.id]);
 
   const fetchProject = async () => {
     try {
@@ -95,6 +95,11 @@ export default function ProjectCanvas() {
       return;
     }
 
+    // Don't create pin if clicking on an existing pin
+    if (e.target.closest('.pin-marker')) {
+      return;
+    }
+
     const rect = canvasRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
@@ -108,7 +113,7 @@ export default function ProjectCanvas() {
       const newPin = response.data;
       setPins(prevPins => [...prevPins, newPin]);
       setSelectedPin(newPin);
-      toast.success('Pin created');
+      toast.success('Pin created! Add a comment.');
     } catch (error) {
       console.error('Failed to create pin:', error);
       toast.error(error.response?.data?.detail || 'Failed to create pin');
@@ -117,9 +122,7 @@ export default function ProjectCanvas() {
 
   const handlePinClick = (pin, e) => {
     e.stopPropagation();
-    if (mode === 'comment') {
-      setSelectedPin(pin);
-    }
+    setSelectedPin(pin);
   };
 
   const handleAddComment = async (e) => {
@@ -171,6 +174,11 @@ export default function ProjectCanvas() {
       ));
       setSelectedPin(prev => ({ ...prev, status: newStatus }));
       toast.success(`Pin ${newStatus}`);
+      
+      // Close sidebar if pin was resolved and showResolved is false
+      if (newStatus === 'resolved' && !showResolved) {
+        setSelectedPin(null);
+      }
     } catch (error) {
       console.error('Failed to update pin status:', error);
       toast.error('Failed to update pin status');
@@ -195,11 +203,12 @@ export default function ProjectCanvas() {
     }
   };
 
-  // Filter pins by status
-  const filteredPins = useMemo(() => {
-    if (commentFilter === 'all') return pins;
-    return pins.filter(pin => pin.status === commentFilter);
-  }, [pins, commentFilter]);
+  // Filter pins: hide resolved unless toggle is on
+  const visiblePins = useMemo(() => {
+    if (mode !== 'comment') return [];
+    if (showResolved) return pins;
+    return pins.filter(pin => pin.status === 'open');
+  }, [pins, showResolved, mode]);
 
   // Filter and sort comments
   const filteredAndSortedComments = useMemo(() => {
@@ -223,10 +232,10 @@ export default function ProjectCanvas() {
     return sorted;
   }, [comments, searchQuery, sortOrder]);
 
-  // Count pins by status
+  // Count pins
   const pinCounts = useMemo(() => {
     return {
-      all: pins.length,
+      total: pins.length,
       open: pins.filter(p => p.status === 'open').length,
       resolved: pins.filter(p => p.status === 'resolved').length
     };
@@ -255,22 +264,27 @@ export default function ProjectCanvas() {
       <div className="flex h-[calc(100vh-4rem)]">
         {/* Comments Sidebar - LEFT */}
         <div className="w-80 bg-white border-r border-border/40 flex flex-col" data-testid="comments-sidebar">
-          {/* Pin Filter Tabs */}
-          <div className="p-3 border-b border-border/40">
-            <Tabs value={commentFilter} onValueChange={setCommentFilter} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 h-9">
-                <TabsTrigger value="all" className="text-xs" data-testid="filter-all">
-                  All ({pinCounts.all})
-                </TabsTrigger>
-                <TabsTrigger value="open" className="text-xs" data-testid="filter-pending">
-                  Pending ({pinCounts.open})
-                </TabsTrigger>
-                <TabsTrigger value="resolved" className="text-xs" data-testid="filter-resolved">
-                  Resolved ({pinCounts.resolved})
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
+          {/* Show Resolved Toggle - Only in Comment Mode */}
+          {mode === 'comment' && (
+            <div className="p-4 border-b border-border/40">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="show-resolved" className="text-sm font-medium cursor-pointer">
+                    Show Resolved
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {pinCounts.open} pending, {pinCounts.resolved} resolved
+                  </p>
+                </div>
+                <Switch
+                  id="show-resolved"
+                  checked={showResolved}
+                  onCheckedChange={setShowResolved}
+                  data-testid="show-resolved-toggle"
+                />
+              </div>
+            </div>
+          )}
 
           {selectedPin && mode === 'comment' ? (
             <>
@@ -414,11 +428,13 @@ export default function ProjectCanvas() {
                   <MessageSquare className="w-8 h-8 text-accent" />
                 </div>
                 <h3 className="font-semibold mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                  {mode === 'browse' ? 'Switch to Comment Mode' : 'Select a pin'}
+                  {mode === 'browse' ? 'Switch to Comment Mode' : visiblePins.length === 0 ? 'No pins yet' : 'Select a pin'}
                 </h3>
                 <p className="text-sm text-muted-foreground">
                   {mode === 'browse' 
                     ? 'Click Comment tab to add feedback'
+                    : visiblePins.length === 0
+                    ? 'Click on canvas to create your first pin'
                     : 'Click on a pin to view and add comments'}
                 </p>
               </div>
@@ -456,7 +472,7 @@ export default function ProjectCanvas() {
                   </TabsTrigger>
                   <TabsTrigger value="comment" className="flex items-center space-x-2" data-testid="comment-tab">
                     <MessageCircle className="w-4 h-4" />
-                    <span>Comment</span>
+                    <span>Comment ({pinCounts.open})</span>
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
@@ -526,7 +542,7 @@ export default function ProjectCanvas() {
                   {project.type === 'url' && project.content_url && (
                     <iframe
                       src={project.content_url}
-                      className="w-full border-0"
+                      className="w-full border-0 pointer-events-none"
                       style={{ height: '800px' }}
                       title={project.name}
                       data-testid="canvas-iframe"
@@ -544,29 +560,34 @@ export default function ProjectCanvas() {
                     <embed
                       src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
                       type="application/pdf"
-                      className="w-full"
+                      className="w-full pointer-events-none"
                       style={{ height: '800px' }}
                       data-testid="canvas-pdf"
                     />
                   )}
 
-                  {/* Pin Markers - Only show filtered pins */}
-                  {filteredPins.map((pin, index) => (
-                    <div
-                      key={pin.id}
-                      className={`pin-marker w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer z-50 ${
-                        pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
-                      } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30' : ''}`}
-                      style={{
-                        left: `${pin.x}%`,
-                        top: `${pin.y}%`
-                      }}
-                      onClick={(e) => handlePinClick(pin, e)}
-                      data-testid={`pin-marker-${index}`}
-                    >
-                      {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pins.findIndex(p => p.id === pin.id) + 1}
-                    </div>
-                  ))}
+                  {/* Pin Markers - Show only in comment mode */}
+                  {visiblePins.map((pin, index) => {
+                    const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
+                    return (
+                      <div
+                        key={pin.id}
+                        className={`pin-marker w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer z-50 ${
+                          pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
+                        } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30' : ''} hover:scale-110 transition-transform`}
+                        style={{
+                          position: 'absolute',
+                          left: `${pin.x}%`,
+                          top: `${pin.y}%`,
+                          transform: 'translate(-50%, -50%)'
+                        }}
+                        onClick={(e) => handlePinClick(pin, e)}
+                        data-testid={`pin-marker-${index}`}
+                      >
+                        {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
