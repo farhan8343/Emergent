@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
@@ -14,7 +14,7 @@ import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, Share2, Eye, MessageCircle, Search, ArrowUpDown, ChevronLeft, Paperclip, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, Share2, Eye, MessageCircle, Search, ArrowUpDown, ChevronLeft, Paperclip, Image as ImageIcon, ExternalLink, Loader2 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -30,6 +30,8 @@ export default function ProjectCanvas() {
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [loading, setLoading] = useState(true);
+  const [screenshotLoading, setScreenshotLoading] = useState(false);
+  const [screenshotUrl, setScreenshotUrl] = useState(null);
   const [mode, setMode] = useState('browse');
   const [viewportSize, setViewportSize] = useState('desktop');
   const [showResolved, setShowResolved] = useState(false);
@@ -37,7 +39,9 @@ export default function ProjectCanvas() {
   const [sortOrder, setSortOrder] = useState('newest');
   const [sidebarView, setSidebarView] = useState('overview');
   const [selectedFile, setSelectedFile] = useState(null);
+  const [imageLoaded, setImageLoaded] = useState(false);
   const canvasRef = useRef(null);
+  const imageRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const fileInputRef = useRef(null);
   const { user, getAuthHeaders } = useAuth();
