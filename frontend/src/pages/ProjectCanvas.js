@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
@@ -9,8 +9,9 @@ import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { ScrollArea } from '../components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, Share2, Eye, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, Share2, Eye, MessageCircle, Search, ArrowUpDown } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -25,21 +26,30 @@ export default function ProjectCanvas() {
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [loading, setLoading] = useState(true);
-  const [mode, setMode] = useState('browse'); // 'browse' or 'comment'
-  const [viewportSize, setViewportSize] = useState('desktop'); // 'desktop', 'tablet', 'mobile'
+  const [mode, setMode] = useState('browse');
+  const [viewportSize, setViewportSize] = useState('desktop');
+  const [commentFilter, setCommentFilter] = useState('all'); // 'all', 'open', 'resolved'
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortOrder, setSortOrder] = useState('newest'); // 'newest', 'oldest'
   const canvasRef = useRef(null);
   const { user, getAuthHeaders } = useAuth();
   const navigate = useNavigate();
 
+  // Fetch project data only once on mount
   useEffect(() => {
-    fetchProject();
-  }, [id]);
-
-  useEffect(() => {
-    if (selectedPin) {
-      fetchComments(selectedPin.id);
+    if (id) {
+      fetchProject();
     }
-  }, [selectedPin]);
+  }, [id]); // Only depend on id
+
+  // Fetch comments when selectedPin changes
+  useEffect(() => {
+    if (selectedPin?.id) {
+      fetchComments(selectedPin.id);
+    } else {
+      setComments([]);
+    }
+  }, [selectedPin?.id]); // Only depend on pin id
 
   const fetchProject = async () => {
     try {
@@ -77,7 +87,13 @@ export default function ProjectCanvas() {
   };
 
   const handleCanvasClick = async (e) => {
-    if (mode !== 'comment' || !canvasRef.current) return;
+    // Only create pins in comment mode and if user is authenticated
+    if (mode !== 'comment' || !canvasRef.current || !user) {
+      if (mode === 'comment' && !user) {
+        toast.error('Please login to add pins');
+      }
+      return;
+    }
 
     const rect = canvasRef.current.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -89,12 +105,13 @@ export default function ProjectCanvas() {
         { project_id: id, x, y },
         { headers: getAuthHeaders() }
       );
-      setPins([...pins, response.data]);
-      setSelectedPin(response.data);
+      const newPin = response.data;
+      setPins(prevPins => [...prevPins, newPin]);
+      setSelectedPin(newPin);
       toast.success('Pin created');
     } catch (error) {
       console.error('Failed to create pin:', error);
-      toast.error('Failed to create pin');
+      toast.error(error.response?.data?.detail || 'Failed to create pin');
     }
   };
 
@@ -129,7 +146,7 @@ export default function ProjectCanvas() {
         headers: user ? getAuthHeaders() : {}
       });
 
-      setComments([...comments, response.data]);
+      setComments(prevComments => [...prevComments, response.data]);
       setNewComment('');
       toast.success('Comment added');
     } catch (error) {
@@ -139,7 +156,7 @@ export default function ProjectCanvas() {
   };
 
   const handleResolvePin = async () => {
-    if (!selectedPin) return;
+    if (!selectedPin || !user) return;
 
     try {
       const newStatus = selectedPin.status === 'open' ? 'resolved' : 'open';
@@ -149,8 +166,10 @@ export default function ProjectCanvas() {
         { headers: getAuthHeaders() }
       );
 
-      setPins(pins.map(p => p.id === selectedPin.id ? { ...p, status: newStatus } : p));
-      setSelectedPin({ ...selectedPin, status: newStatus });
+      setPins(prevPins => prevPins.map(p => 
+        p.id === selectedPin.id ? { ...p, status: newStatus } : p
+      ));
+      setSelectedPin(prev => ({ ...prev, status: newStatus }));
       toast.success(`Pin ${newStatus}`);
     } catch (error) {
       console.error('Failed to update pin status:', error);
@@ -176,6 +195,43 @@ export default function ProjectCanvas() {
     }
   };
 
+  // Filter pins by status
+  const filteredPins = useMemo(() => {
+    if (commentFilter === 'all') return pins;
+    return pins.filter(pin => pin.status === commentFilter);
+  }, [pins, commentFilter]);
+
+  // Filter and sort comments
+  const filteredAndSortedComments = useMemo(() => {
+    let filtered = comments;
+
+    // Search filter
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(comment =>
+        comment.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        comment.author_name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // Sort
+    const sorted = [...filtered].sort((a, b) => {
+      const dateA = new Date(a.created_at);
+      const dateB = new Date(b.created_at);
+      return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+    });
+
+    return sorted;
+  }, [comments, searchQuery, sortOrder]);
+
+  // Count pins by status
+  const pinCounts = useMemo(() => {
+    return {
+      all: pins.length,
+      open: pins.filter(p => p.status === 'open').length,
+      resolved: pins.filter(p => p.status === 'resolved').length
+    };
+  }, [pins]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -199,47 +255,90 @@ export default function ProjectCanvas() {
       <div className="flex h-[calc(100vh-4rem)]">
         {/* Comments Sidebar - LEFT */}
         <div className="w-80 bg-white border-r border-border/40 flex flex-col" data-testid="comments-sidebar">
+          {/* Pin Filter Tabs */}
+          <div className="p-3 border-b border-border/40">
+            <Tabs value={commentFilter} onValueChange={setCommentFilter} className="w-full">
+              <TabsList className="grid w-full grid-cols-3 h-9">
+                <TabsTrigger value="all" className="text-xs" data-testid="filter-all">
+                  All ({pinCounts.all})
+                </TabsTrigger>
+                <TabsTrigger value="open" className="text-xs" data-testid="filter-pending">
+                  Pending ({pinCounts.open})
+                </TabsTrigger>
+                <TabsTrigger value="resolved" className="text-xs" data-testid="filter-resolved">
+                  Resolved ({pinCounts.resolved})
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
           {selectedPin && mode === 'comment' ? (
             <>
-              <div className="p-4 border-b border-border/40 flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                    Pin #{pins.findIndex(p => p.id === selectedPin.id) + 1}
-                  </h3>
-                  <p className="text-xs text-muted-foreground capitalize">
-                    {selectedPin.status}
-                  </p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {user && (
+              <div className="p-4 border-b border-border/40">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="font-semibold" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                      Pin #{pins.findIndex(p => p.id === selectedPin.id) + 1}
+                    </h3>
+                    <p className="text-xs text-muted-foreground capitalize">
+                      {selectedPin.status}
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    {user && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleResolvePin}
+                        data-testid="resolve-pin-btn"
+                      >
+                        {selectedPin.status === 'open' ? 'Resolve' : 'Reopen'}
+                      </Button>
+                    )}
                     <Button
                       size="sm"
-                      variant="outline"
-                      onClick={handleResolvePin}
-                      data-testid="resolve-pin-btn"
+                      variant="ghost"
+                      onClick={() => setSelectedPin(null)}
+                      data-testid="close-pin-btn"
                     >
-                      {selectedPin.status === 'open' ? 'Resolve' : 'Reopen'}
+                      <X className="w-4 h-4" />
                     </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setSelectedPin(null)}
-                    data-testid="close-pin-btn"
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
+                  </div>
+                </div>
+
+                {/* Search and Sort */}
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search comments..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-9 h-9"
+                      data-testid="search-comments"
+                    />
+                  </div>
+                  <Select value={sortOrder} onValueChange={setSortOrder}>
+                    <SelectTrigger className="h-9" data-testid="sort-comments">
+                      <ArrowUpDown className="w-4 h-4 mr-2" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">Newest First</SelectItem>
+                      <SelectItem value="oldest">Oldest First</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4">
-                  {comments.length === 0 ? (
+                  {filteredAndSortedComments.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-8">
-                      No comments yet. Be the first to comment!
+                      {searchQuery ? 'No comments found' : 'No comments yet. Be the first to comment!'}
                     </p>
                   ) : (
-                    comments.map((comment) => (
+                    filteredAndSortedComments.map((comment) => (
                       <Card key={comment.id} className="p-3 border-border/40" data-testid={`comment-${comment.id}`}>
                         <div className="flex items-start space-x-2">
                           <div className="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center flex-shrink-0">
@@ -418,7 +517,10 @@ export default function ProjectCanvas() {
                   ref={canvasRef}
                   className="markup-canvas relative"
                   onClick={handleCanvasClick}
-                  style={{ minHeight: '600px', cursor: mode === 'comment' ? 'crosshair' : 'default' }}
+                  style={{ 
+                    minHeight: '600px', 
+                    cursor: mode === 'comment' && user ? 'crosshair' : 'default'
+                  }}
                   data-testid="markup-canvas"
                 >
                   {project.type === 'url' && project.content_url && (
@@ -448,8 +550,8 @@ export default function ProjectCanvas() {
                     />
                   )}
 
-                  {/* Pin Markers */}
-                  {pins.map((pin, index) => (
+                  {/* Pin Markers - Only show filtered pins */}
+                  {filteredPins.map((pin, index) => (
                     <div
                       key={pin.id}
                       className={`pin-marker w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer z-50 ${
@@ -462,7 +564,7 @@ export default function ProjectCanvas() {
                       onClick={(e) => handlePinClick(pin, e)}
                       data-testid={`pin-marker-${index}`}
                     >
-                      {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : index + 1}
+                      {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pins.findIndex(p => p.id === pin.id) + 1}
                     </div>
                   ))}
                 </div>
