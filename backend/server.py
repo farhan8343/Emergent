@@ -610,7 +610,7 @@ async def create_comment_with_attachment(
             payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
             user_id = payload.get('user_id')
             current_user = await db.users.find_one({'id': user_id}, {'_id': 0, 'password_hash': 0})
-        except:
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
             pass
     
     is_guest = current_user is None
