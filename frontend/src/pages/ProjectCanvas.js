@@ -22,6 +22,7 @@ const API = `${BACKEND_URL}/api`;
 export default function ProjectCanvas() {
   const { id } = useParams();
   const [project, setProject] = useState(null);
+  const [projectLoaded, setProjectLoaded] = useState(false);
   const [pins, setPins] = useState([]);
   const [allComments, setAllComments] = useState({});
   const [selectedPin, setSelectedPin] = useState(null);
