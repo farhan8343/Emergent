@@ -159,8 +159,8 @@ export default function ProjectCanvas() {
     }
   };
 
-  const handleCanvasClick = async (e) => {
-    if (mode !== 'comment' || !canvasRef.current || !user) {
+  const handleCanvasClick = useCallback(async (e) => {
+    if (mode !== 'comment' || !imageRef.current || !user) {
       if (mode === 'comment' && !user) {
         toast.error('Please login to add pins');
       }
@@ -172,12 +172,17 @@ export default function ProjectCanvas() {
       return;
     }
 
-    const rect = canvasRef.current.getBoundingClientRect();
-    const scrollTop = scrollContainerRef.current?.scrollTop || 0;
-    const scrollLeft = scrollContainerRef.current?.scrollLeft || 0;
+    // Get the image element bounds (pins are relative to the image, not canvas)
+    const imageRect = imageRef.current.getBoundingClientRect();
     
-    const x = ((e.clientX - rect.left + scrollLeft) / rect.width) * 100;
-    const y = ((e.clientY - rect.top + scrollTop) / rect.height) * 100;
+    // Calculate position as percentage of the image dimensions
+    const x = ((e.clientX - imageRect.left) / imageRect.width) * 100;
+    const y = ((e.clientY - imageRect.top) / imageRect.height) * 100;
+
+    // Ensure pin is within image bounds
+    if (x < 0 || x > 100 || y < 0 || y > 100) {
+      return;
+    }
 
     try {
       const response = await axios.post(
@@ -193,7 +198,7 @@ export default function ProjectCanvas() {
       console.error('Failed to create pin:', error);
       toast.error(error.response?.data?.detail || 'Failed to create pin');
     }
-  };
+  }, [mode, user, id, getAuthHeaders]);
 
   const handlePinClick = (pin, e) => {
     e.stopPropagation();
