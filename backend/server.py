@@ -762,7 +762,37 @@ async def get_file(file_type: str, filename: str):
     
     return FileResponse(file_path)
 
-# Super Admin Routes
+# Screenshot capture endpoint
+@api_router.get("/projects/{project_id}/screenshot")
+async def get_project_screenshot(
+    project_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Capture and return screenshot for a project"""
+    project = await db.projects.find_one(
+        {'id': project_id, 'team_id': current_user['team_id']},
+        {'_id': 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    
+    # If screenshot already exists, return it
+    if project.get('screenshot_path'):
+        return {'screenshot_path': project['screenshot_path']}
+    
+    # If it's a URL project, capture screenshot now
+    if project['type'] == 'url' and project.get('content_url'):
+        screenshot_path = await capture_full_page_screenshot(project['content_url'])
+        
+        if screenshot_path:
+            # Update project with screenshot path
+            await db.projects.update_one(
+                {'id': project_id},
+                {'$set': {'screenshot_path': screenshot_path}}
+            )
+            return {'screenshot_path': screenshot_path}
+    
+    return {'screenshot_path': None}
 @api_router.get("/superadmin/teams")
 async def get_all_teams(current_user: dict = Depends(get_current_user)):
     # Only allow admin@markuply.com
