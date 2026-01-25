@@ -243,7 +243,7 @@ export default function ProjectCanvas() {
         formData,
         {
           headers: {
-            ...getAuthHeaders(),
+            ...(user ? getAuthHeaders() : {}),
             'Content-Type': 'multipart/form-data'
           }
         }
@@ -259,7 +259,7 @@ export default function ProjectCanvas() {
       toast.success('Comment added');
     } catch (error) {
       console.error('Failed to add comment:', error);
-      toast.error('Failed to add comment');
+      toast.error(error.response?.data?.detail || 'Failed to add comment');
     }
   };
 
