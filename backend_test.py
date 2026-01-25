@@ -345,7 +345,15 @@ class MarkuplyAPITester:
             'guest_email': 'guest@example.com'
         }
         
-        response = self.make_request('POST', 'comments', comment_data, auth_required=False)
+        # Make request without auth headers for guest comment
+        url = f"{self.api_url}/comments"
+        headers = {'Content-Type': 'application/json'}
+        
+        try:
+            response = requests.post(url, json=comment_data, headers=headers)
+        except Exception as e:
+            self.log_result("Create Guest Comment", False, None, f"Request exception: {str(e)}")
+            return False
         
         if response and response.status_code == 200:
             data = response.json()
@@ -356,7 +364,8 @@ class MarkuplyAPITester:
                 self.log_result("Create Guest Comment", False, data, "Missing comment data")
         else:
             error_msg = response.json().get('detail', 'Unknown error') if response else 'Request failed'
-            self.log_result("Create Guest Comment", False, None, error_msg)
+            status_code = response.status_code if response else 'No response'
+            self.log_result("Create Guest Comment", False, None, f"Status {status_code}: {error_msg}")
         
         return False
 
