@@ -14,7 +14,7 @@ import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, Share2, Eye, MessageCircle, Search, ArrowUpDown, ChevronLeft, Paperclip, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, Share2, Eye, MessageCircle, Search, ArrowUpDown, ChevronLeft, Paperclip, Image as ImageIcon, ExternalLink } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -22,7 +22,6 @@ const API = `${BACKEND_URL}/api`;
 export default function ProjectCanvas() {
   const { id } = useParams();
   const [project, setProject] = useState(null);
-  const [projectLoaded, setProjectLoaded] = useState(false);
   const [pins, setPins] = useState([]);
   const [allComments, setAllComments] = useState({});
   const [selectedPin, setSelectedPin] = useState(null);
@@ -37,11 +36,7 @@ export default function ProjectCanvas() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('newest');
   const [sidebarView, setSidebarView] = useState('overview');
-  const [uploadingFile, setUploadingFile] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
-  const [showCommentInput, setShowCommentInput] = useState(false);
-  const [commentInputPos, setCommentInputPos] = useState({ x: 0, y: 0 });
-  const [pendingPin, setPendingPin] = useState(null);
   const canvasRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -58,7 +53,7 @@ export default function ProjectCanvas() {
     if (pins.length > 0) {
       fetchAllComments();
     }
-  }, [pins]);
+  }, [pins.length]);
 
   useEffect(() => {
     if (selectedPin?.id) {
@@ -73,7 +68,6 @@ export default function ProjectCanvas() {
         headers: getAuthHeaders()
       });
       setProject(response.data);
-      setProjectLoaded(true);
       await fetchPins(id);
     } catch (error) {
       console.error('Failed to fetch project:', error);
@@ -131,13 +125,8 @@ export default function ProjectCanvas() {
       return;
     }
 
-    // Don't create pin if clicking on existing markers or popup
     const target = e.target;
-    if (target.closest('.pin-marker') || 
-        target.closest('.comment-input-popup') ||
-        target.tagName === 'BUTTON' ||
-        target.tagName === 'TEXTAREA' ||
-        target.tagName === 'INPUT') {
+    if (target.closest('.pin-marker')) {
       return;
     }
 
@@ -145,67 +134,19 @@ export default function ProjectCanvas() {
     const scrollTop = scrollContainerRef.current?.scrollTop || 0;
     const scrollLeft = scrollContainerRef.current?.scrollLeft || 0;
     
-    // Calculate position relative to document, not viewport
     const x = ((e.clientX - rect.left + scrollLeft) / rect.width) * 100;
     const y = ((e.clientY - rect.top + scrollTop) / rect.height) * 100;
 
-    // Show comment input at click position
-    setCommentInputPos({ 
-      x: e.clientX - rect.left, 
-      y: e.clientY - rect.top 
-    });
-    setPendingPin({ x, y });
-    setShowCommentInput(true);
-  };
-
-  const handleCreatePinWithComment = async () => {
-    if (!pendingPin || !newComment.trim()) {
-      toast.error('Please enter a comment');
-      return;
-    }
-
     try {
-      // Create pin
-      const pinResponse = await axios.post(
+      const response = await axios.post(
         `${API}/pins`,
-        { project_id: id, x: pendingPin.x, y: pendingPin.y },
+        { project_id: id, x, y },
         { headers: getAuthHeaders() }
       );
-      const newPin = pinResponse.data;
+      const newPin = response.data;
       setPins(prevPins => [...prevPins, newPin]);
-
-      // Add comment
-      const formData = new FormData();
-      formData.append('pin_id', newPin.id);
-      formData.append('content', newComment);
-      
-      if (selectedFile) {
-        formData.append('file', selectedFile);
-      }
-
-      const commentResponse = await axios.post(
-        `${API}/comments/with-attachment`,
-        formData,
-        {
-          headers: {
-            ...getAuthHeaders(),
-            'Content-Type': 'multipart/form-data'
-          }
-        }
-      );
-
-      // Update state
-      setAllComments(prev => ({
-        ...prev,
-        [newPin.id]: [commentResponse.data]
-      }));
-
-      toast.success('Pin and comment created!');
-      setShowCommentInput(false);
-      setNewComment('');
-      setSelectedFile(null);
-      setPendingPin(null);
       setSelectedPin(newPin);
+      toast.success('Pin created! Add a comment.');
     } catch (error) {
       console.error('Failed to create pin:', error);
       toast.error(error.response?.data?.detail || 'Failed to create pin');
@@ -232,6 +173,11 @@ export default function ProjectCanvas() {
       return;
     }
 
+    if (!newComment.trim()) {
+      toast.error('Please enter a comment');
+      return;
+    }
+
     try {
       const formData = new FormData();
       formData.append('pin_id', selectedPin.id);
@@ -251,8 +197,7 @@ export default function ProjectCanvas() {
         formData,
         {
           headers: {
-            ...(user ? getAuthHeaders() : {}),
-            'Content-Type': 'multipart/form-data'
+            ...(user ? getAuthHeaders() : {})
           }
         }
       );
@@ -267,7 +212,8 @@ export default function ProjectCanvas() {
       toast.success('Comment added');
     } catch (error) {
       console.error('Failed to add comment:', error);
-      toast.error(error.response?.data?.detail || 'Failed to add comment');
+      const errorMsg = error.response?.data?.detail || 'Failed to add comment';
+      toast.error(errorMsg);
     }
   };
 
@@ -387,7 +333,7 @@ export default function ProjectCanvas() {
       <Navbar />
 
       <div className="flex h-[calc(100vh-4rem)]">
-        {/* Comments Sidebar - LEFT */}
+        {/* Comments Sidebar */}
         <div className="w-80 bg-white border-r border-border/40 flex flex-col" data-testid="comments-sidebar">
           {mode === 'comment' ? (
             sidebarView === 'overview' ? (
@@ -437,7 +383,7 @@ export default function ProjectCanvas() {
                   <div className="p-4 space-y-2">
                     {filteredAndSortedPins.length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-8">
-                        {searchQuery ? 'No pins found' : visiblePins.length === 0 ? 'No pins yet. Click canvas to create.' : 'No pins to show'}
+                        {searchQuery ? 'No pins found' : 'Click canvas to create pins'}
                       </p>
                     ) : (
                       filteredAndSortedPins.map((pin) => {
@@ -450,7 +396,6 @@ export default function ProjectCanvas() {
                             key={pin.id}
                             className="p-3 border-border/40 cursor-pointer hover:shadow-md transition-shadow"
                             onClick={() => setSelectedPin(pin)}
-                            data-testid={`pin-overview-${pin.id}`}
                           >
                             <div className="flex items-start space-x-3">
                               <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-white font-bold text-xs ${
@@ -494,7 +439,6 @@ export default function ProjectCanvas() {
                         variant="ghost"
                         size="sm"
                         onClick={handleBackToOverview}
-                        data-testid="back-to-overview"
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </Button>
@@ -507,18 +451,15 @@ export default function ProjectCanvas() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      {user && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleResolvePin}
-                          data-testid="resolve-pin-btn"
-                        >
-                          {selectedPin?.status === 'open' ? 'Resolve' : 'Reopen'}
-                        </Button>
-                      )}
-                    </div>
+                    {user && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleResolvePin}
+                      >
+                        {selectedPin?.status === 'open' ? 'Resolve' : 'Reopen'}
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -526,11 +467,11 @@ export default function ProjectCanvas() {
                   <div className="space-y-4">
                     {comments.length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-8">
-                        No comments yet. Be the first to comment!
+                        No comments yet
                       </p>
                     ) : (
                       comments.map((comment) => (
-                        <Card key={comment.id} className="p-3 border-border/40" data-testid={`comment-${comment.id}`}>
+                        <Card key={comment.id} className="p-3 border-border/40">
                           <div className="flex items-start space-x-2">
                             <div className="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center flex-shrink-0">
                               <span className="text-xs font-semibold text-accent">
@@ -541,12 +482,10 @@ export default function ProjectCanvas() {
                               <div className="flex items-center space-x-2 mb-1">
                                 <p className="text-sm font-semibold">{comment.author_name}</p>
                                 {comment.author_type === 'guest' && (
-                                  <span className="text-xs bg-secondary text-secondary-foreground px-2 py-0.5 rounded">
-                                    Guest
-                                  </span>
+                                  <span className="text-xs bg-secondary px-2 py-0.5 rounded">Guest</span>
                                 )}
                               </div>
-                              <p className="text-sm text-foreground mb-2">{comment.content}</p>
+                              <p className="text-sm mb-2">{comment.content}</p>
                               {comment.attachment_path && (
                                 <a
                                   href={`${BACKEND_URL}/api/files/attachments/${comment.attachment_path.split('/').pop()}`}
@@ -555,18 +494,7 @@ export default function ProjectCanvas() {
                                   className="text-xs text-accent hover:underline flex items-center space-x-1"
                                 >
                                   <Paperclip className="w-3 h-3" />
-                                  <span>View attachment</span>
-                                </a>
-                              )}
-                              {comment.screenshot_path && (
-                                <a
-                                  href={`${BACKEND_URL}/api/files/screenshots/${comment.screenshot_path.split('/').pop()}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-accent hover:underline flex items-center space-x-1 mt-1"
-                                >
-                                  <ImageIcon className="w-3 h-3" />
-                                  <span>View screenshot</span>
+                                  <span>Attachment</span>
                                 </a>
                               )}
                               <p className="text-xs text-muted-foreground mt-1">
@@ -589,7 +517,6 @@ export default function ProjectCanvas() {
                           value={guestName}
                           onChange={(e) => setGuestName(e.target.value)}
                           required
-                          data-testid="guest-name-input"
                         />
                         <Input
                           type="email"
@@ -597,7 +524,6 @@ export default function ProjectCanvas() {
                           value={guestEmail}
                           onChange={(e) => setGuestEmail(e.target.value)}
                           required
-                          data-testid="guest-email-input"
                         />
                       </>
                     )}
@@ -607,7 +533,6 @@ export default function ProjectCanvas() {
                       onChange={(e) => setNewComment(e.target.value)}
                       required
                       rows={3}
-                      data-testid="comment-input"
                     />
                     <div className="flex items-center space-x-2">
                       <input
@@ -622,10 +547,9 @@ export default function ProjectCanvas() {
                         variant="outline"
                         size="sm"
                         onClick={() => fileInputRef.current?.click()}
-                        data-testid="attach-file-btn"
                       >
                         <Paperclip className="w-4 h-4 mr-2" />
-                        {selectedFile ? selectedFile.name : 'Attach'}
+                        {selectedFile ? selectedFile.name.substring(0, 15) : 'Attach'}
                       </Button>
                       {selectedFile && (
                         <Button
@@ -640,8 +564,7 @@ export default function ProjectCanvas() {
                     </div>
                     <Button
                       type="submit"
-                      className="w-full bg-accent text-accent-foreground hover:bg-accent/90 rounded-full"
-                      data-testid="add-comment-btn"
+                      className="w-full bg-accent hover:bg-accent/90 rounded-full"
                     >
                       <MessageSquare className="w-4 h-4 mr-2" />
                       Add Comment
@@ -653,229 +576,118 @@ export default function ProjectCanvas() {
           ) : (
             <div className="flex-1 flex items-center justify-center p-8 text-center">
               <div>
-                <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <MessageSquare className="w-8 h-8 text-accent" />
-                </div>
-                <h3 className="font-semibold mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                  Switch to Comment Mode
-                </h3>
+                <MessageSquare className="w-16 h-16 text-accent/30 mx-auto mb-4" />
+                <h3 className="font-semibold mb-2">Switch to Comment Mode</h3>
                 <p className="text-sm text-muted-foreground">
-                  Click Comment tab to view and manage feedback
+                  Click Comment tab to add feedback
                 </p>
               </div>
             </div>
           )}
         </div>
 
-        {/* Canvas Area - CENTER */}
+        {/* Canvas Area */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="bg-white border-b border-border/40 p-3 flex items-center justify-between">
+          <div className="bg-white border-b p-3 flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate('/dashboard')}
-                data-testid="canvas-back-btn"
-              >
+              <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')}>
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back
               </Button>
               <div className="h-6 w-px bg-border"></div>
-              <h1 className="text-lg font-bold" style={{ fontFamily: 'Outfit, sans-serif' }} data-testid="project-title">
-                {project.name}
-              </h1>
+              <h1 className="text-lg font-bold">{project.name}</h1>
             </div>
 
             <div className="flex items-center space-x-3">
-              <Tabs value={mode} onValueChange={setMode} className="w-auto">
+              <Tabs value={mode} onValueChange={setMode}>
                 <TabsList className="bg-secondary">
-                  <TabsTrigger value="browse" className="flex items-center space-x-2" data-testid="browse-tab">
-                    <Eye className="w-4 h-4" />
-                    <span>Browse</span>
+                  <TabsTrigger value="browse">
+                    <Eye className="w-4 h-4 mr-2" />
+                    Browse
                   </TabsTrigger>
-                  <TabsTrigger value="comment" className="flex items-center space-x-2" data-testid="comment-tab">
-                    <MessageCircle className="w-4 h-4" />
-                    <span>Comment ({pinCounts.open})</span>
+                  <TabsTrigger value="comment">
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                    Comment ({pinCounts.open})
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
 
-              <div className="h-6 w-px bg-border"></div>
-
-              <div className="flex items-center space-x-1 bg-secondary rounded-lg p-1">
-                <Button
-                  size="sm"
-                  variant={viewportSize === 'desktop' ? 'default' : 'ghost'}
-                  onClick={() => setViewportSize('desktop')}
-                  className="h-8 px-3"
-                  data-testid="desktop-view"
-                >
-                  <Monitor className="w-4 h-4" />
+              {project.content_url && (
+                <Button size="sm" variant="outline" onClick={() => window.open(project.content_url, '_blank')}>
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Open URL
                 </Button>
-                <Button
-                  size="sm"
-                  variant={viewportSize === 'tablet' ? 'default' : 'ghost'}
-                  onClick={() => setViewportSize('tablet')}
-                  className="h-8 px-3"
-                  data-testid="tablet-view"
-                >
-                  <Tablet className="w-4 h-4" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant={viewportSize === 'mobile' ? 'default' : 'ghost'}
-                  onClick={() => setViewportSize('mobile')}
-                  className="h-8 px-3"
-                  data-testid="mobile-view"
-                >
-                  <Smartphone className="w-4 h-4" />
-                </Button>
-              </div>
+              )}
 
-              <div className="h-6 w-px bg-border"></div>
-
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleShare}
-                data-testid="share-btn"
-              >
+              <Button size="sm" variant="outline" onClick={handleShare}>
                 <Share2 className="w-4 h-4 mr-2" />
                 Share
               </Button>
             </div>
           </div>
 
-          <div 
-            ref={scrollContainerRef}
-            className="flex-1 overflow-auto bg-secondary/30 p-8"
-          >
-            <div className="mx-auto" style={{ width: getViewportWidth(), maxWidth: '100%' }}>
-              <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-                <div
-                  ref={canvasRef}
-                  className="markup-canvas relative"
-                  onClick={handleCanvasClick}
-                  style={{ 
-                    minHeight: '600px', 
-                    cursor: mode === 'comment' && user ? 'crosshair' : 'default'
-                  }}
-                  data-testid="markup-canvas"
-                >
-                  {project.type === 'url' && project.content_url && (
-                    <iframe
-                      key={`iframe-${project.id}`}
-                      src={project.content_url}
-                      className="w-full border-0"
-                      style={{ height: '2000px' }}
-                      title={project.name}
-                      sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-                      data-testid="canvas-iframe"
-                    />  
-                  )}
-                  {project.type === 'image' && project.file_path && (
-                    <img
-                      src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
-                      alt={project.name}
-                      className="w-full h-auto"
-                      data-testid="canvas-image"
-                    />
-                  )}
-                  {project.type === 'pdf' && project.file_path && (
-                    <embed
-                      src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
-                      type="application/pdf"
-                      className="w-full"
-                      style={{ height: '2000px' }}
-                      data-testid="canvas-pdf"
-                    />
-                  )}
-
-                  {/* Pin Markers */}
-                  {visiblePins.map((pin) => {
-                    const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
-                    return (
-                      <div
-                        key={pin.id}
-                        className={`pin-marker w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer z-50 ${
-                          pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
-                        } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30' : ''} hover:scale-110 transition-transform`}
-                        style={{
-                          position: 'absolute',
-                          left: `${pin.x}%`,
-                          top: `${pin.y}%`,
-                          transform: 'translate(-50%, -50%)'
-                        }}
-                        onClick={(e) => handlePinClick(pin, e)}
-                        data-testid={`pin-marker-${pinNumber}`}
-                      >
-                        {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
-                      </div>
-                    );
-                  })}
-
-                  {/* Floating Comment Input */}
-                  {showCommentInput && (
-                    <div
-                      className="comment-input-popup absolute bg-white rounded-lg shadow-xl border-2 border-accent p-4 z-50"
-                      style={{
-                        left: `${commentInputPos.x}px`,
-                        top: `${commentInputPos.y}px`,
-                        width: '300px'
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-semibold text-sm">Add Pin & Comment</h4>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setShowCommentInput(false);
-                            setPendingPin(null);
-                            setNewComment('');
-                            setSelectedFile(null);
-                          }}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                      <Textarea
-                        placeholder="Enter your comment..."
-                        value={newComment}
-                        onChange={(e) => setNewComment(e.target.value)}
-                        rows={3}
-                        className="mb-2"
-                        autoFocus
-                      />
-                      <div className="flex items-center space-x-2 mb-2">
-                        <input
-                          type="file"
-                          onChange={handleFileSelect}
-                          className="hidden"
-                          id="popup-file-input"
-                          accept="image/*,.pdf,.doc,.docx"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => document.getElementById('popup-file-input')?.click()}
-                        >
-                          <Paperclip className="w-4 h-4 mr-1" />
-                          {selectedFile ? selectedFile.name.substring(0, 15) + '...' : 'Attach'}
-                        </Button>
-                      </div>
-                      <Button
-                        onClick={handleCreatePinWithComment}
-                        className="w-full bg-accent text-accent-foreground hover:bg-accent/90 rounded-full"
-                        size="sm"
-                      >
-                        Create Pin
+          <div ref={scrollContainerRef} className="flex-1 overflow-auto bg-secondary/30 p-8">
+            <div className="mx-auto bg-white rounded-xl shadow-lg p-8">
+              <div
+                ref={canvasRef}
+                className="relative"
+                onClick={handleCanvasClick}
+                style={{ 
+                  minHeight: '800px',
+                  cursor: mode === 'comment' && user ? 'crosshair' : 'default',
+                  background: 'linear-gradient(45deg, #f5f5f5 25%, transparent 25%), linear-gradient(-45deg, #f5f5f5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f5f5f5 75%), linear-gradient(-45deg, transparent 75%, #f5f5f5 75%)',
+                  backgroundSize: '20px 20px',
+                  backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px'
+                }}
+              >
+                {project.type === 'url' && project.content_url && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <ExternalLink className="w-16 h-16 text-accent mx-auto mb-4" />
+                      <h3 className="text-xl font-semibold mb-2">External Website</h3>
+                      <p className="text-muted-foreground mb-4">Click pins to add feedback or open URL above</p>
+                      <Button variant="outline" onClick={() => window.open(project.content_url, '_blank')}>
+                        Open {project.content_url}
                       </Button>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
+                {project.type === 'image' && project.file_path && (
+                  <img
+                    src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
+                    alt={project.name}
+                    className="w-full h-auto"
+                  />
+                )}
+                {project.type === 'pdf' && project.file_path && (
+                  <embed
+                    src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
+                    type="application/pdf"
+                    className="w-full"
+                    style={{ height: '800px' }}
+                  />
+                )}
+
+                {/* Pins */}
+                {visiblePins.map((pin) => {
+                  const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
+                  return (
+                    <div
+                      key={pin.id}
+                      className={`pin-marker absolute w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer z-50 ${
+                        pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
+                      } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30' : ''} hover:scale-110 transition-transform`}
+                      style={{
+                        left: `${pin.x}%`,
+                        top: `${pin.y}%`,
+                        transform: 'translate(-50%, -50%)'
+                      }}
+                      onClick={(e) => handlePinClick(pin, e)}
+                    >
+                      {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
