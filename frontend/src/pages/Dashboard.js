@@ -330,15 +330,18 @@ export default function Dashboard() {
                       src={`${BACKEND_URL}/api/files/screenshots/${project.thumbnail_path.split('/').pop()}`}
                       alt={project.name}
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.parentElement.querySelector('.fallback-icon').style.display = 'flex';
+                      }}
                     />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <div className="text-center">
-                        {getProjectIcon(project.type)}
-                        <p className="text-xs text-muted-foreground mt-2">{project.type.toUpperCase()}</p>
-                      </div>
+                  ) : null}
+                  <div className={`w-full h-full flex items-center justify-center fallback-icon ${project.thumbnail_path ? 'hidden' : ''}`}>
+                    <div className="text-center text-muted-foreground">
+                      {getProjectIcon(project.type)}
+                      <p className="text-xs mt-2">{project.type.toUpperCase()}</p>
                     </div>
-                  )}
+                  </div>
                   
                   {/* Hover Actions */}
                   <div className="absolute top-2 right-2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
