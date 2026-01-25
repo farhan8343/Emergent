@@ -1,0 +1,161 @@
+{
+  "identity": {
+    "name": "Markuply",
+    "persona": "E1 - The Anti-AI Designer",
+    "mission": "Create a visual markup tool that feels like a Swiss design studio tool, not a generic SaaS.",
+    "principles": [
+      "Fusion over Imitation: Mix Swiss Poster aesthetics with SaaS utility.",
+      "Emotion First: Clarity and Confidence.",
+      "Content is King: The user's design (the markup target) is the hero.",
+      "Zoom In: Focus on the details of the feedback.",
+      "Negative Space: High density in tools, high breathability in canvas."
+    ]
+  },
+  "typography": {
+    "font_family": {
+      "headings": "Outfit, sans-serif",
+      "body": "DM Sans, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "weights": {
+      "light": 300,
+      "regular": 400,
+      "medium": 500,
+      "bold": 700,
+      "black": 900
+    },
+    "scale": {
+      "h1": "text-5xl md:text-7xl tracking-tight font-bold",
+      "h2": "text-4xl md:text-5xl tracking-tight font-bold",
+      "h3": "text-2xl md:text-3xl tracking-normal font-semibold",
+      "body_lg": "text-lg leading-relaxed",
+      "body_base": "text-base leading-relaxed",
+      "caption": "text-sm tracking-wide uppercase text-muted-foreground"
+    },
+    "instructions": "Import fonts via Google Fonts in index.html or CSS. Do NOT use Inter for headings."
+  },
+  "colors": {
+    "theme_strategy": "Light Mode Default (Canvas Focus), Dark Mode Option (Dashboard)",
+    "palette": {
+      "primary": {
+        "DEFAULT": "#1A1A1A",
+        "foreground": "#FFFFFF",
+        "description": "Deep Charcoal - The anchor."
+      },
+      "secondary": {
+        "DEFAULT": "#F4F4F5",
+        "foreground": "#18181B",
+        "description": "Soft Zinc - The structure."
+      },
+      "accent": {
+        "DEFAULT": "#FF4D00",
+        "foreground": "#FFFFFF",
+        "description": "Electric Orange - The Action (Pins, CTAs)."
+      },
+      "muted": {
+        "DEFAULT": "#F4F4F5",
+        "foreground": "#71717A"
+      },
+      "background": {
+        "light": "#FFFFFF",
+        "dark": "#09090B"
+      },
+      "status": {
+        "success": "#00B894",
+        "warning": "#FDCB6E",
+        "error": "#FF7675"
+      }
+    },
+    "gradients": {
+      "subtle_glow": "radial-gradient(circle at 50% 50%, rgba(255, 77, 0, 0.15), transparent 70%)"
+    }
+  },
+  "layout": {
+    "spacing_system": "Tailwind Scale (p-4, p-8, p-12, p-16, p-24, p-32)",
+    "grid_modes": {
+      "marketing": "Mode A (Tetris Grid) - Asymmetric, 12-col base, wide gaps.",
+      "dashboard": "Mode B (High Density) - 4-col base, tight gaps, 100% height utilization."
+    },
+    "containers": {
+      "marketing": "max-w-7xl mx-auto px-6 md:px-12",
+      "dashboard": "w-full px-4 md:px-8 py-6"
+    },
+    "z_index": {
+      "canvas": 0,
+      "overlays": 10,
+      "floating_tools": 40,
+      "modals": 50,
+      "toasts": 100
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-8 py-3 font-medium transition-transform hover:scale-105 active:scale-95",
+      "secondary": "bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-full px-6 py-2 font-medium",
+      "ghost": "hover:bg-accent/10 hover:text-accent transition-colors rounded-md px-4 py-2"
+    },
+    "cards": {
+      "dashboard": "bg-card border border-border/40 shadow-sm hover:shadow-md transition-all duration-300 rounded-xl p-6",
+      "marketing": "bg-white/50 backdrop-blur-md border border-white/20 shadow-xl rounded-2xl p-8"
+    },
+    "inputs": {
+      "default": "bg-background border-input focus:ring-2 focus:ring-accent/20 focus:border-accent rounded-lg h-11 px-4 transition-all"
+    },
+    "pins": {
+      "marker": "w-8 h-8 rounded-full bg-accent border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer hover:scale-110 transition-transform z-50",
+      "thread": "absolute bg-white rounded-lg shadow-xl border border-border/50 w-80 p-4 z-50"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": "backdrop-blur-xl bg-white/70 border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.05)]",
+    "textures": "Use subtle noise overlays on solid backgrounds to prevent flatness.",
+    "shadows": {
+      "soft": "0 4px 20px -2px rgba(0, 0, 0, 0.05)",
+      "sharp": "4px 4px 0px 0px rgba(0,0,0,1)"
+    }
+  },
+  "assets": {
+    "icons": "Lucide React (default). Use stroke-width={1.5} for a refined look.",
+    "images": {
+      "hero_collaboration": {
+        "url": "https://images.unsplash.com/photo-1758691736843-90f58dce465e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzZ8MHwxfHNlYXJjaHwxfHxjcmVhdGl2ZSUyMHRlYW0lMjBjb2xsYWJvcmF0aW9uJTIwb2ZmaWNlfGVufDB8fHx8MTc2OTM2NzM0OHww&ixlib=rb-4.1.0&q=85",
+        "alt": "Creative team collaborating with sticky notes",
+        "usage": "Landing page hero or 'About' section"
+      },
+      "workspace_minimal": {
+        "url": "https://images.unsplash.com/photo-1574625370413-a04a06f08d77?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzB8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwd29ya3NwYWNlJTIwbGFwdG9wJTIwZGVzaWdufGVufDB8fHx8MTc2OTM2NzM0OXww&ixlib=rb-4.1.0&q=85",
+        "alt": "Minimalist workspace with laptop",
+        "usage": "Feature section background or login page side image"
+      },
+      "texture_abstract": {
+        "url": "https://images.unsplash.com/photo-1595411425732-e69c1abe2763?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODR8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGdlb21ldHJpYyUyMHNoYXBlcyUyMHRleHR1cmV8ZW58MHx8fHwxNzY5MzY3MzUxfDA&ixlib=rb-4.1.0&q=85",
+        "alt": "Abstract geometric texture",
+        "usage": "Subtle overlay for headers or footers"
+      }
+    }
+  },
+  "motion": {
+    "transitions": "transition-all duration-300 ease-out",
+    "hover_lift": "hover:-translate-y-1 hover:shadow-lg",
+    "micro_interactions": "Active states should feel snappy (duration-150). Entrance animations should be smooth (duration-500)."
+  },
+  "accessibility": {
+    "contrast": "Ensure text on accent colors is white. Ensure text on muted backgrounds is dark gray (zinc-800).",
+    "focus": "Visible focus rings on all interactive elements (ring-2 ring-offset-2 ring-accent).",
+    "testing": "All interactive elements MUST have data-testid attributes."
+  },
+  "instructions_to_main_agent": {
+    "general": "You are building a high-precision tool. The UI should recede when the user is reviewing content, but pop when they need to take action.",
+    "file_types": "Use .js and .jsx extensions. Do NOT use .ts or .tsx.",
+    "styling": "Use Tailwind utility classes for everything. Avoid custom CSS files unless absolutely necessary for complex animations.",
+    "components": "Use Shadcn UI logic but override the styles to match the 'Swiss High-Contrast' theme defined here. Do not use the default Shadcn look.",
+    "canvas_implementation": "The markup canvas is the core feature. It must handle coordinate mapping relative to the image/iframe natural size, not the viewport size.",
+    "universal_guidelines": [
+      "Do not use gradients for text or backgrounds unless specified.",
+      "Avoid 'AI slop' - generic centered layouts.",
+      "Use 'sonner' for toasts.",
+      "Export components as named exports.",
+      "Export pages as default exports."
+    ]
+  }
+}
