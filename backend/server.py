@@ -154,7 +154,18 @@ def create_token(user_id: str) -> str:
     payload = {'user_id': user_id, 'exp': expiration}
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+# Helper function for optional authentication
+async def get_current_user_optional(credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))) -> Optional[dict]:
+    if not credentials:
+        return None
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload.get('user_id')
+        user = await db.users.find_one({'id': user_id}, {'_id': 0, 'password_hash': 0})
+        return user
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return None
     try:
         token = credentials.credentials
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
