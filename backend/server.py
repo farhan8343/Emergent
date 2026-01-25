@@ -406,6 +406,7 @@ async def create_project(
     project_id = str(uuid.uuid4())
     file_path = None
     thumbnail_path = None
+    screenshot_path = None
     
     if file:
         file_extension = Path(file.filename).suffix
@@ -422,9 +423,10 @@ async def create_project(
                 {'$inc': {'storage_used_mb': file_size_mb}}
             )
     
-    # Generate thumbnail for URL projects
+    # Generate thumbnail and full screenshot for URL projects
     if type == 'url' and content_url:
         thumbnail_path = await generate_project_thumbnail(content_url)
+        screenshot_path = await capture_full_page_screenshot(content_url)
     
     project = {
         'id': project_id,
@@ -434,6 +436,7 @@ async def create_project(
         'content_url': content_url,
         'file_path': file_path,
         'thumbnail_path': thumbnail_path,
+        'screenshot_path': screenshot_path,
         'created_by': current_user['id'],
         'created_at': datetime.now(timezone.utc).isoformat()
     }
