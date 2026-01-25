@@ -73,6 +73,7 @@ export default function ProjectCanvas() {
         headers: getAuthHeaders()
       });
       setProject(response.data);
+      setProjectLoaded(true);
       await fetchPins(id);
     } catch (error) {
       console.error('Failed to fetch project:', error);
