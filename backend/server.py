@@ -582,8 +582,19 @@ async def create_comment_with_attachment(
     guest_name: Optional[str] = Form(None),
     guest_email: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None),
-    current_user: Optional[dict] = None
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
 ):
+    # Try to get current user
+    current_user = None
+    if credentials:
+        try:
+            token = credentials.credentials
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            user_id = payload.get('user_id')
+            current_user = await db.users.find_one({'id': user_id}, {'_id': 0, 'password_hash': 0})
+        except:
+            pass
+    
     is_guest = current_user is None
     
     if is_guest:
