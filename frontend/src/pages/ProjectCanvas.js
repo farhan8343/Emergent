@@ -200,16 +200,16 @@ export default function ProjectCanvas() {
     }
   }, [mode, user, id, getAuthHeaders]);
 
-  const handlePinClick = (pin, e) => {
+  const handlePinClick = useCallback((pin, e) => {
     e.stopPropagation();
     setSelectedPin(pin);
-  };
+  }, []);
 
-  const handleBackToOverview = () => {
+  const handleBackToOverview = useCallback(() => {
     setSelectedPin(null);
     setSidebarView('overview');
     setSearchQuery('');
-  };
+  }, []);
 
   const handleAddComment = async (e) => {
     e.preventDefault();
