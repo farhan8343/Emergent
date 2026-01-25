@@ -6,6 +6,7 @@ import AuthPage from './pages/AuthPage';
 import Dashboard from './pages/Dashboard';
 import ProjectCanvas from './pages/ProjectCanvas';
 import AdminPanel from './pages/AdminPanel';
+import SuperAdmin from './pages/SuperAdmin';
 import ProtectedRoute from './components/ProtectedRoute';
 import { Toaster } from 'sonner';
 
@@ -38,6 +39,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <AdminPanel />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/superadmin"
+              element={
+                <ProtectedRoute>
+                  <SuperAdmin />
                 </ProtectedRoute>
               }
             />
