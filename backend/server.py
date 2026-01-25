@@ -661,6 +661,51 @@ async def get_file(file_type: str, filename: str):
     
     return FileResponse(file_path)
 
+# Super Admin Routes
+@api_router.get("/superadmin/teams")
+async def get_all_teams(current_user: dict = Depends(get_current_user)):
+    # Only allow admin@markuply.com
+    if current_user['email'] != 'admin@markuply.com':
+        raise HTTPException(status_code=403, detail='Unauthorized')
+    
+    teams_list = await db.teams.find({}, {'_id': 0}).to_list(1000)
+    
+    # Enrich with owner email and project count
+    for team in teams_list:
+        owner = await db.users.find_one({'id': team['owner_id']}, {'_id': 0})
+        team['owner_email'] = owner['email'] if owner else None
+        team['project_count'] = await db.projects.count_documents({'team_id': team['id']})
+    
+    return teams_list
+
+@api_router.get("/superadmin/users")
+async def get_all_users(current_user: dict = Depends(get_current_user)):
+    if current_user['email'] != 'admin@markuply.com':
+        raise HTTPException(status_code=403, detail='Unauthorized')
+    
+    users_list = await db.users.find({}, {'_id': 0, 'password_hash': 0}).to_list(10000)
+    return users_list
+
+@api_router.get("/superadmin/stats")
+async def get_super_stats(current_user: dict = Depends(get_current_user)):
+    if current_user['email'] != 'admin@markuply.com':
+        raise HTTPException(status_code=403, detail='Unauthorized')
+    
+    total_teams = await db.teams.count_documents({})
+    total_users = await db.users.count_documents({})
+    total_projects = await db.projects.count_documents({})
+    
+    # Calculate total storage
+    all_teams = await db.teams.find({}, {'_id': 0, 'storage_used_mb': 1}).to_list(1000)
+    total_storage_mb = sum(team.get('storage_used_mb', 0) for team in all_teams)
+    
+    return {
+        'total_teams': total_teams,
+        'total_users': total_users,
+        'total_projects': total_projects,
+        'total_storage_mb': total_storage_mb
+    }
+
 app.include_router(api_router)
 
 app.add_middleware(
