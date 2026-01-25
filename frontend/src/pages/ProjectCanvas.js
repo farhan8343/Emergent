@@ -637,8 +637,9 @@ export default function ProjectCanvas() {
                     <iframe
                       src={project.content_url}
                       className="w-full border-0"
-                      style={{ height: '800px', pointerEvents: 'none' }}
+                      style={{ height: '800px' }}
                       title={project.name}
+                      sandbox="allow-same-origin allow-scripts allow-forms"
                       data-testid="canvas-iframe"
                     />
                   )}
