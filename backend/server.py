@@ -19,12 +19,19 @@ import aiosmtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import asyncio
-from playwright.async_api import async_playwright
-from PIL import Image
-import io
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# Set Playwright browsers path before importing playwright
+if os.environ.get('PLAYWRIGHT_BROWSERS_PATH'):
+    os.environ['PLAYWRIGHT_BROWSERS_PATH'] = os.environ['PLAYWRIGHT_BROWSERS_PATH']
+else:
+    os.environ['PLAYWRIGHT_BROWSERS_PATH'] = '/pw-browsers'
+
+from playwright.async_api import async_playwright
+from PIL import Image
+import io
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
