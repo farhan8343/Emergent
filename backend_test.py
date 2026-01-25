@@ -157,13 +157,24 @@ class MarkuplyAPITester:
 
     def test_create_url_project(self):
         """Test creating a URL project"""
+        # Use form data for project creation as expected by the API
         project_data = {
             'name': 'Test URL Project',
             'type': 'url',
             'content_url': 'https://example.com'
         }
         
-        response = self.make_request('POST', 'projects', data=project_data)
+        # Make request with form data instead of JSON
+        url = f"{self.api_url}/projects"
+        headers = {}
+        if self.token:
+            headers['Authorization'] = f'Bearer {self.token}'
+        
+        try:
+            response = requests.post(url, data=project_data, headers=headers)
+        except Exception as e:
+            self.log_result("Create URL Project", False, None, f"Request exception: {str(e)}")
+            return False
         
         if response and response.status_code == 200:
             data = response.json()
@@ -175,7 +186,8 @@ class MarkuplyAPITester:
                 self.log_result("Create URL Project", False, data, "Missing project data")
         else:
             error_msg = response.json().get('detail', 'Unknown error') if response else 'Request failed'
-            self.log_result("Create URL Project", False, None, error_msg)
+            status_code = response.status_code if response else 'No response'
+            self.log_result("Create URL Project", False, None, f"Status {status_code}: {error_msg}")
         
         return False
 
