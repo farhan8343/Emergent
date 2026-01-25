@@ -364,7 +364,7 @@ export default function ProjectCanvas() {
                         {searchQuery ? 'No pins found' : visiblePins.length === 0 ? 'No pins yet. Click canvas to create.' : 'No pins to show'}
                       </p>
                     ) : (
-                      filteredPins.map((pin) => {
+                      filteredAndSortedPins.map((pin) => {
                         const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
                         const pinComments = allComments[pin.id] || [];
                         const lastComment = pinComments[pinComments.length - 1];
