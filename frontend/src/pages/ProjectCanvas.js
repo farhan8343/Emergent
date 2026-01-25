@@ -674,74 +674,123 @@ export default function ProjectCanvas() {
           </div>
 
           <div ref={scrollContainerRef} className="flex-1 overflow-auto bg-secondary/30 p-8">
-            <div className="mx-auto bg-white rounded-xl shadow-lg p-8">
+            <div className="mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
               <div
                 ref={canvasRef}
                 className="relative"
                 onClick={handleCanvasClick}
                 style={{ 
-                  minHeight: '800px',
                   cursor: mode === 'comment' && user ? 'crosshair' : 'default'
                 }}
               >
+                {/* URL-based project with screenshot */}
                 {project.type === 'url' && (
-                  project.screenshot_path ? (
-                    <img
-                      src={`${BACKEND_URL}/api/files/screenshots/${project.screenshot_path.split('/').pop()}`}
-                      alt={project.name}
-                      className="w-full h-auto"
-                      style={{ pointerEvents: 'none', userSelect: 'none' }}
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center">
+                  screenshotLoading ? (
+                    <div className="flex items-center justify-center py-32">
                       <div className="text-center">
-                        <ExternalLink className="w-16 h-16 text-accent mx-auto mb-4" />
-                        <h3 className="text-xl font-semibold mb-2">Generating Screenshot...</h3>
-                        <p className="text-muted-foreground mb-4">Please wait or refresh the page</p>
-                        <Button variant="outline" onClick={() => window.location.reload()}>
-                          Refresh Page
+                        <Loader2 className="w-16 h-16 text-accent mx-auto mb-4 animate-spin" />
+                        <h3 className="text-xl font-semibold mb-2">Capturing Screenshot...</h3>
+                        <p className="text-muted-foreground">Please wait while we capture {project.content_url}</p>
+                      </div>
+                    </div>
+                  ) : screenshotUrl ? (
+                    <div className="relative">
+                      <img
+                        ref={imageRef}
+                        src={screenshotUrl}
+                        alt={project.name}
+                        className="w-full h-auto block"
+                        onLoad={() => setImageLoaded(true)}
+                        onError={(e) => {
+                          console.error('Image failed to load');
+                          toast.error('Failed to load screenshot');
+                        }}
+                        data-testid="project-screenshot"
+                      />
+                      {/* Pins rendered inside image container */}
+                      {imageLoaded && visiblePins.map((pin) => {
+                        const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
+                        return (
+                          <div
+                            key={pin.id}
+                            className={`pin-marker absolute w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer z-10 ${
+                              pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
+                            } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30' : ''} hover:scale-110 transition-transform`}
+                            style={{
+                              left: `${pin.x}%`,
+                              top: `${pin.y}%`,
+                              transform: 'translate(-50%, -50%)'
+                            }}
+                            onClick={(e) => handlePinClick(pin, e)}
+                            data-testid={`pin-${pin.id}`}
+                          >
+                            {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center py-32">
+                      <div className="text-center">
+                        <ExternalLink className="w-16 h-16 text-accent/40 mx-auto mb-4" />
+                        <h3 className="text-xl font-semibold mb-2">Ready to Capture</h3>
+                        <p className="text-muted-foreground mb-4">Click below to capture a screenshot of the website</p>
+                        <Button onClick={captureScreenshot} disabled={screenshotLoading}>
+                          <ImageIcon className="w-4 h-4 mr-2" />
+                          Capture Screenshot
                         </Button>
                       </div>
                     </div>
                   )
                 )}
+
+                {/* Image-based project */}
                 {project.type === 'image' && project.file_path && (
-                  <img
-                    src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
-                    alt={project.name}
-                    className="w-full h-auto"
-                    style={{ pointerEvents: 'none', userSelect: 'none' }}
-                  />
-                )}
-                {project.type === 'pdf' && project.file_path && (
-                  <embed
-                    src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
-                    type="application/pdf"
-                    className="w-full"
-                    style={{ height: '800px' }}
-                  />
+                  <div className="relative">
+                    <img
+                      ref={imageRef}
+                      src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
+                      alt={project.name}
+                      className="w-full h-auto block"
+                      onLoad={() => setImageLoaded(true)}
+                      data-testid="project-image"
+                    />
+                    {/* Pins for image projects */}
+                    {imageLoaded && visiblePins.map((pin) => {
+                      const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
+                      return (
+                        <div
+                          key={pin.id}
+                          className={`pin-marker absolute w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer z-10 ${
+                            pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
+                          } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30' : ''} hover:scale-110 transition-transform`}
+                          style={{
+                            left: `${pin.x}%`,
+                            top: `${pin.y}%`,
+                            transform: 'translate(-50%, -50%)'
+                          }}
+                          onClick={(e) => handlePinClick(pin, e)}
+                          data-testid={`pin-${pin.id}`}
+                        >
+                          {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
 
-                {/* Pins */}
-                {visiblePins.map((pin) => {
-                  const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
-                  return (
-                    <div
-                      key={pin.id}
-                      className={`pin-marker absolute w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer z-50 ${
-                        pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
-                      } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30' : ''} hover:scale-110 transition-transform`}
-                      style={{
-                        left: `${pin.x}%`,
-                        top: `${pin.y}%`,
-                        transform: 'translate(-50%, -50%)'
-                      }}
-                      onClick={(e) => handlePinClick(pin, e)}
-                    >
-                      {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
-                    </div>
-                  );
-                })}
+                {/* PDF-based project */}
+                {project.type === 'pdf' && project.file_path && (
+                  <div className="relative">
+                    <embed
+                      src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
+                      type="application/pdf"
+                      className="w-full"
+                      style={{ height: '800px' }}
+                      data-testid="project-pdf"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>
