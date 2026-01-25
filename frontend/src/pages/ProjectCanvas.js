@@ -53,6 +53,15 @@ export default function ProjectCanvas() {
     }
   }, [id]);
 
+  // Capture screenshot on-demand when project loads (for URL type)
+  useEffect(() => {
+    if (project && project.type === 'url' && !project.screenshot_path && !screenshotLoading) {
+      captureScreenshot();
+    } else if (project?.screenshot_path) {
+      setScreenshotUrl(`${BACKEND_URL}/api/files/screenshots/${project.screenshot_path.split('/').pop()}`);
+    }
+  }, [project]);
+
   useEffect(() => {
     if (pins.length > 0) {
       fetchAllComments();
@@ -65,6 +74,35 @@ export default function ProjectCanvas() {
       setSidebarView('thread');
     }
   }, [selectedPin?.id]);
+
+  const captureScreenshot = useCallback(async () => {
+    if (!project || screenshotLoading) return;
+    
+    setScreenshotLoading(true);
+    try {
+      const response = await axios.post(
+        `${API}/projects/${project.id}/capture`,
+        {},
+        { headers: getAuthHeaders() }
+      );
+      
+      if (response.data.screenshot_path) {
+        const newUrl = `${BACKEND_URL}/api/files/screenshots/${response.data.screenshot_path.split('/').pop()}`;
+        setScreenshotUrl(newUrl);
+        setProject(prev => ({
+          ...prev,
+          screenshot_path: response.data.screenshot_path,
+          thumbnail_path: response.data.thumbnail_path
+        }));
+        toast.success('Screenshot captured successfully!');
+      }
+    } catch (error) {
+      console.error('Failed to capture screenshot:', error);
+      toast.error('Failed to capture screenshot');
+    } finally {
+      setScreenshotLoading(false);
+    }
+  }, [project, screenshotLoading, getAuthHeaders]);
 
   const fetchProject = async () => {
     try {
