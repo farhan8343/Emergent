@@ -430,11 +430,11 @@ class TestComments:
         print(f"✓ Found {len(data)} comment(s) for pin")
     
     def test_create_comment_authenticated(self, auth_headers, test_pin_id):
-        """Test creating a comment as authenticated user"""
+        """Test creating a comment as authenticated user via with-attachment endpoint"""
         response = requests.post(
-            f"{BASE_URL}/api/comments",
+            f"{BASE_URL}/api/comments/with-attachment",
             headers=auth_headers,
-            json={
+            data={
                 "pin_id": test_pin_id,
                 "content": f"TEST_Comment_{uuid.uuid4().hex[:8]}"
             }
@@ -449,8 +449,8 @@ class TestComments:
     def test_create_comment_guest_missing_info(self, test_pin_id):
         """Test guest comment without required info"""
         response = requests.post(
-            f"{BASE_URL}/api/comments",
-            json={
+            f"{BASE_URL}/api/comments/with-attachment",
+            data={
                 "pin_id": test_pin_id,
                 "content": "Guest comment without info"
             }
