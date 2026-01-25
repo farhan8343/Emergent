@@ -574,6 +574,77 @@ async def create_comment(
     
     return Comment(**comment)
 
+@api_router.post("/comments/with-attachment", response_model=Comment)
+async def create_comment_with_attachment(
+    background_tasks: BackgroundTasks,
+    pin_id: str = Form(...),
+    content: str = Form(...),
+    guest_name: Optional[str] = Form(None),
+    guest_email: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    current_user: Optional[dict] = None
+):
+    is_guest = current_user is None
+    
+    if is_guest:
+        if not guest_name or not guest_email:
+            raise HTTPException(status_code=400, detail='Guest name and email required')
+        author_type = 'guest'
+        author_id = None
+        author_name = guest_name
+    else:
+        author_type = 'team'
+        author_id = current_user['id']
+        author_name = current_user['name']
+    
+    # Handle file upload
+    attachment_path = None
+    if file:
+        file_extension = Path(file.filename).suffix
+        file_name = f"{uuid.uuid4()}{file_extension}"
+        attachment_path = f"uploads/attachments/{file_name}"
+        
+        async with aiofiles.open(UPLOAD_DIR / 'attachments' / file_name, 'wb') as f:
+            file_content = await file.read()
+            await f.write(file_content)
+            
+            # Update storage usage if user is authenticated
+            if current_user:
+                file_size_mb = len(file_content) / (1024 * 1024)
+                await db.teams.update_one(
+                    {'id': current_user['team_id']},
+                    {'$inc': {'storage_used_mb': file_size_mb}}
+                )
+    
+    # Get pin and project info for screenshot
+    pin = await db.pins.find_one({'id': pin_id}, {'_id': 0})
+    screenshot_path = None
+    
+    if pin:
+        project = await db.projects.find_one({'id': pin['project_id']}, {'_id': 0})
+        if project and project.get('content_url'):
+            screenshot_path = await capture_screenshot(
+                project['content_url'],
+                pin['x'],
+                pin['y']
+            )
+    
+    comment = {
+        'id': str(uuid.uuid4()),
+        'pin_id': pin_id,
+        'author_type': author_type,
+        'author_id': author_id,
+        'author_name': author_name,
+        'guest_email': guest_email if is_guest else None,
+        'content': content,
+        'attachment_path': attachment_path,
+        'screenshot_path': screenshot_path,
+        'created_at': datetime.now(timezone.utc).isoformat()
+    }
+    await db.comments.insert_one(comment)
+    
+    return Comment(**comment)
+
 @api_router.get("/comments/{pin_id}", response_model=List[Comment])
 async def get_comments(pin_id: str):
     comments = await db.comments.find({'pin_id': pin_id}, {'_id': 0}).to_list(1000)
