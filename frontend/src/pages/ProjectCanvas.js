@@ -265,15 +265,19 @@ export default function ProjectCanvas() {
     });
   }, [visiblePins, searchQuery, allComments, pins]);
 
-  // Filter and sort comments in thread view
-  const filteredAndSortedComments = useMemo(() => {
-    const sorted = [...comments].sort((a, b) => {
+  // Filter and sort pins in overview
+  const filteredAndSortedPins = useMemo(() => {
+    let filtered = filteredPins;
+    
+    // Sort pins
+    const sorted = [...filtered].sort((a, b) => {
       const dateA = new Date(a.created_at);
       const dateB = new Date(b.created_at);
       return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
     });
+    
     return sorted;
-  }, [comments, sortOrder]);
+  }, [filteredPins, sortOrder]);
 
   const pinCounts = useMemo(() => {
     return {
