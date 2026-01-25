@@ -454,7 +454,7 @@ export default function ProjectCanvas() {
                         No comments yet. Be the first to comment!
                       </p>
                     ) : (
-                      filteredAndSortedComments.map((comment) => (
+                      comments.map((comment) => (
                         <Card key={comment.id} className="p-3 border-border/40" data-testid={`comment-${comment.id}`}>
                           <div className="flex items-start space-x-2">
                             <div className="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center flex-shrink-0">
