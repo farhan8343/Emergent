@@ -14,7 +14,7 @@ import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, Share2, Eye, MessageCircle, Search, ArrowUpDown, ChevronLeft } from 'lucide-react';
+import { ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, Share2, Eye, MessageCircle, Search, ArrowUpDown, ChevronLeft, Paperclip, Image as ImageIcon } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -23,7 +23,7 @@ export default function ProjectCanvas() {
   const { id } = useParams();
   const [project, setProject] = useState(null);
   const [pins, setPins] = useState([]);
-  const [allComments, setAllComments] = useState({}); // Store comments by pin_id
+  const [allComments, setAllComments] = useState({});
   const [selectedPin, setSelectedPin] = useState(null);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
@@ -35,8 +35,15 @@ export default function ProjectCanvas() {
   const [showResolved, setShowResolved] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('newest');
-  const [sidebarView, setSidebarView] = useState('overview'); // 'overview' or 'thread'
+  const [sidebarView, setSidebarView] = useState('overview');
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [showCommentInput, setShowCommentInput] = useState(false);
+  const [commentInputPos, setCommentInputPos] = useState({ x: 0, y: 0 });
+  const [pendingPin, setPendingPin] = useState(null);
   const canvasRef = useRef(null);
+  const scrollContainerRef = useRef(null);
+  const fileInputRef = useRef(null);
   const { user, getAuthHeaders } = useAuth();
   const navigate = useNavigate();
 
@@ -46,14 +53,12 @@ export default function ProjectCanvas() {
     }
   }, [id]);
 
-  // Fetch all comments for all pins
   useEffect(() => {
     if (pins.length > 0) {
       fetchAllComments();
     }
   }, [pins]);
 
-  // Fetch comments for selected pin
   useEffect(() => {
     if (selectedPin?.id) {
       fetchComments(selectedPin.id);
@@ -124,24 +129,75 @@ export default function ProjectCanvas() {
       return;
     }
 
-    if (e.target.closest('.pin-marker')) {
+    if (e.target.closest('.pin-marker') || e.target.closest('.comment-input-popup')) {
       return;
     }
 
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    const scrollTop = scrollContainerRef.current?.scrollTop || 0;
+    const scrollLeft = scrollContainerRef.current?.scrollLeft || 0;
+    
+    // Calculate position relative to document, not viewport
+    const x = ((e.clientX - rect.left + scrollLeft) / rect.width) * 100;
+    const y = ((e.clientY - rect.top + scrollTop) / rect.height) * 100;
+
+    // Show comment input at click position
+    setCommentInputPos({ 
+      x: e.clientX - rect.left, 
+      y: e.clientY - rect.top 
+    });
+    setPendingPin({ x, y });
+    setShowCommentInput(true);
+  };
+
+  const handleCreatePinWithComment = async () => {
+    if (!pendingPin || !newComment.trim()) {
+      toast.error('Please enter a comment');
+      return;
+    }
 
     try {
-      const response = await axios.post(
+      // Create pin
+      const pinResponse = await axios.post(
         `${API}/pins`,
-        { project_id: id, x, y },
+        { project_id: id, x: pendingPin.x, y: pendingPin.y },
         { headers: getAuthHeaders() }
       );
-      const newPin = response.data;
+      const newPin = pinResponse.data;
       setPins(prevPins => [...prevPins, newPin]);
+
+      // Add comment
+      const formData = new FormData();
+      formData.append('pin_id', newPin.id);
+      formData.append('content', newComment);
+      
+      if (selectedFile) {
+        formData.append('file', selectedFile);
+      }
+
+      const commentResponse = await axios.post(
+        `${API}/comments/with-attachment`,
+        formData,
+        {
+          headers: {
+            ...getAuthHeaders(),
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
+
+      // Update state
+      setAllComments(prev => ({
+        ...prev,
+        [newPin.id]: [commentResponse.data]
+      }));
+
+      toast.success('Pin and comment created!');
+      setShowCommentInput(false);
+      setNewComment('');
+      setSelectedFile(null);
+      setPendingPin(null);
       setSelectedPin(newPin);
-      toast.success('Pin created! Add a comment.');
     } catch (error) {
       console.error('Failed to create pin:', error);
       toast.error(error.response?.data?.detail || 'Failed to create pin');
@@ -169,19 +225,29 @@ export default function ProjectCanvas() {
     }
 
     try {
-      const payload = {
-        pin_id: selectedPin.id,
-        content: newComment
-      };
+      const formData = new FormData();
+      formData.append('pin_id', selectedPin.id);
+      formData.append('content', newComment);
 
       if (!user) {
-        payload.guest_name = guestName;
-        payload.guest_email = guestEmail;
+        formData.append('guest_name', guestName);
+        formData.append('guest_email', guestEmail);
       }
 
-      const response = await axios.post(`${API}/comments`, payload, {
-        headers: user ? getAuthHeaders() : {}
-      });
+      if (selectedFile) {
+        formData.append('file', selectedFile);
+      }
+
+      const response = await axios.post(
+        `${API}/comments/with-attachment`,
+        formData,
+        {
+          headers: {
+            ...getAuthHeaders(),
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
 
       setComments(prevComments => [...prevComments, response.data]);
       setAllComments(prev => ({
@@ -189,10 +255,23 @@ export default function ProjectCanvas() {
         [selectedPin.id]: [...(prev[selectedPin.id] || []), response.data]
       }));
       setNewComment('');
+      setSelectedFile(null);
       toast.success('Comment added');
     } catch (error) {
       console.error('Failed to add comment:', error);
       toast.error('Failed to add comment');
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('File size must be less than 10MB');
+        return;
+      }
+      setSelectedFile(file);
+      toast.success(`File selected: ${file.name}`);
     }
   };
 
@@ -246,7 +325,6 @@ export default function ProjectCanvas() {
     return pins.filter(pin => pin.status === 'open');
   }, [pins, showResolved, mode]);
 
-  // Search pins in overview
   const filteredPins = useMemo(() => {
     if (!searchQuery.trim()) return visiblePins;
     
@@ -254,10 +332,8 @@ export default function ProjectCanvas() {
       const pinComments = allComments[pin.id] || [];
       const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
       
-      // Search in pin number
       if (pinNumber.toString().includes(searchQuery)) return true;
       
-      // Search in comments
       return pinComments.some(comment => 
         comment.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
         comment.author_name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -265,17 +341,12 @@ export default function ProjectCanvas() {
     });
   }, [visiblePins, searchQuery, allComments, pins]);
 
-  // Filter and sort pins in overview
   const filteredAndSortedPins = useMemo(() => {
-    let filtered = filteredPins;
-    
-    // Sort pins
-    const sorted = [...filtered].sort((a, b) => {
+    const sorted = [...filteredPins].sort((a, b) => {
       const dateA = new Date(a.created_at);
       const dateB = new Date(b.created_at);
       return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
     });
-    
     return sorted;
   }, [filteredPins, sortOrder]);
 
@@ -312,7 +383,6 @@ export default function ProjectCanvas() {
         <div className="w-80 bg-white border-r border-border/40 flex flex-col" data-testid="comments-sidebar">
           {mode === 'comment' ? (
             sidebarView === 'overview' ? (
-              // OVERVIEW: List of all pins
               <>
                 <div className="p-4 border-b border-border/40">
                   <div className="flex items-center justify-between mb-3">
@@ -332,7 +402,6 @@ export default function ProjectCanvas() {
                     />
                   </div>
                   
-                  {/* Search all pins */}
                   <div className="relative mb-2">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
@@ -344,7 +413,6 @@ export default function ProjectCanvas() {
                     />
                   </div>
                   
-                  {/* Sort dropdown */}
                   <Select value={sortOrder} onValueChange={setSortOrder}>
                     <SelectTrigger className="h-9" data-testid="sort-pins">
                       <ArrowUpDown className="w-4 h-4 mr-2" />
@@ -410,7 +478,6 @@ export default function ProjectCanvas() {
                 </ScrollArea>
               </>
             ) : (
-              // THREAD: Single pin comments
               <>
                 <div className="p-4 border-b border-border/40">
                   <div className="flex items-center justify-between">
@@ -471,7 +538,29 @@ export default function ProjectCanvas() {
                                   </span>
                                 )}
                               </div>
-                              <p className="text-sm text-foreground">{comment.content}</p>
+                              <p className="text-sm text-foreground mb-2">{comment.content}</p>
+                              {comment.attachment_path && (
+                                <a
+                                  href={`${BACKEND_URL}/api/files/attachments/${comment.attachment_path.split('/').pop()}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-accent hover:underline flex items-center space-x-1"
+                                >
+                                  <Paperclip className="w-3 h-3" />
+                                  <span>View attachment</span>
+                                </a>
+                              )}
+                              {comment.screenshot_path && (
+                                <a
+                                  href={`${BACKEND_URL}/api/files/screenshots/${comment.screenshot_path.split('/').pop()}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-accent hover:underline flex items-center space-x-1 mt-1"
+                                >
+                                  <ImageIcon className="w-3 h-3" />
+                                  <span>View screenshot</span>
+                                </a>
+                              )}
                               <p className="text-xs text-muted-foreground mt-1">
                                 {new Date(comment.created_at).toLocaleString()}
                               </p>
@@ -512,6 +601,35 @@ export default function ProjectCanvas() {
                       rows={3}
                       data-testid="comment-input"
                     />
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileSelect}
+                        className="hidden"
+                        accept="image/*,.pdf,.doc,.docx"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        data-testid="attach-file-btn"
+                      >
+                        <Paperclip className="w-4 h-4 mr-2" />
+                        {selectedFile ? selectedFile.name : 'Attach'}
+                      </Button>
+                      {selectedFile && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedFile(null)}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
                     <Button
                       type="submit"
                       className="w-full bg-accent text-accent-foreground hover:bg-accent/90 rounded-full"
@@ -620,7 +738,10 @@ export default function ProjectCanvas() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto bg-secondary/30 p-8">
+          <div 
+            ref={scrollContainerRef}
+            className="flex-1 overflow-auto bg-secondary/30 p-8"
+          >
             <div className="mx-auto" style={{ width: getViewportWidth(), maxWidth: '100%' }}>
               <div className="bg-white rounded-xl shadow-lg overflow-hidden">
                 <div
@@ -637,11 +758,11 @@ export default function ProjectCanvas() {
                     <iframe
                       src={project.content_url}
                       className="w-full border-0"
-                      style={{ height: '800px' }}
+                      style={{ height: '2000px' }}
                       title={project.name}
-                      sandbox="allow-same-origin allow-scripts allow-forms"
+                      sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
                       data-testid="canvas-iframe"
-                    />
+                    />  
                   )}
                   {project.type === 'image' && project.file_path && (
                     <img
@@ -656,12 +777,13 @@ export default function ProjectCanvas() {
                       src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
                       type="application/pdf"
                       className="w-full"
-                      style={{ height: '800px', pointerEvents: 'none' }}
+                      style={{ height: '2000px' }}
                       data-testid="canvas-pdf"
                     />
                   )}
 
-                  {visiblePins.map((pin, index) => {
+                  {/* Pin Markers */}
+                  {visiblePins.map((pin) => {
                     const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
                     return (
                       <div
@@ -676,12 +798,74 @@ export default function ProjectCanvas() {
                           transform: 'translate(-50%, -50%)'
                         }}
                         onClick={(e) => handlePinClick(pin, e)}
-                        data-testid={`pin-marker-${index}`}
+                        data-testid={`pin-marker-${pinNumber}`}
                       >
                         {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
                       </div>
                     );
                   })}
+
+                  {/* Floating Comment Input */}
+                  {showCommentInput && (
+                    <div
+                      className="comment-input-popup absolute bg-white rounded-lg shadow-xl border-2 border-accent p-4 z-50"
+                      style={{
+                        left: `${commentInputPos.x}px`,
+                        top: `${commentInputPos.y}px`,
+                        width: '300px'
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-semibold text-sm">Add Pin & Comment</h4>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setShowCommentInput(false);
+                            setPendingPin(null);
+                            setNewComment('');
+                            setSelectedFile(null);
+                          }}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <Textarea
+                        placeholder="Enter your comment..."
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        rows={3}
+                        className="mb-2"
+                        autoFocus
+                      />
+                      <div className="flex items-center space-x-2 mb-2">
+                        <input
+                          type="file"
+                          onChange={handleFileSelect}
+                          className="hidden"
+                          id="popup-file-input"
+                          accept="image/*,.pdf,.doc,.docx"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => document.getElementById('popup-file-input')?.click()}
+                        >
+                          <Paperclip className="w-4 h-4 mr-1" />
+                          {selectedFile ? selectedFile.name.substring(0, 15) + '...' : 'Attach'}
+                        </Button>
+                      </div>
+                      <Button
+                        onClick={handleCreatePinWithComment}
+                        className="w-full bg-accent text-accent-foreground hover:bg-accent/90 rounded-full"
+                        size="sm"
+                      >
+                        Create Pin
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
