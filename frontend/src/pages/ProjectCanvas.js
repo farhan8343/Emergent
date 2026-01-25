@@ -756,6 +756,7 @@ export default function ProjectCanvas() {
                 >
                   {project.type === 'url' && project.content_url && (
                     <iframe
+                      key={`iframe-${project.id}`}
                       src={project.content_url}
                       className="w-full border-0"
                       style={{ height: '2000px' }}
