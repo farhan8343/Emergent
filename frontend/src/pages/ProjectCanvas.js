@@ -634,29 +634,36 @@ export default function ProjectCanvas() {
                 onClick={handleCanvasClick}
                 style={{ 
                   minHeight: '800px',
-                  cursor: mode === 'comment' && user ? 'crosshair' : 'default',
-                  background: 'linear-gradient(45deg, #f5f5f5 25%, transparent 25%), linear-gradient(-45deg, #f5f5f5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f5f5f5 75%), linear-gradient(-45deg, transparent 75%, #f5f5f5 75%)',
-                  backgroundSize: '20px 20px',
-                  backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px'
+                  cursor: mode === 'comment' && user ? 'crosshair' : 'default'
                 }}
               >
-                {project.type === 'url' && project.content_url && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center">
-                      <ExternalLink className="w-16 h-16 text-accent mx-auto mb-4" />
-                      <h3 className="text-xl font-semibold mb-2">External Website</h3>
-                      <p className="text-muted-foreground mb-4">Click pins to add feedback or open URL above</p>
-                      <Button variant="outline" onClick={() => window.open(project.content_url, '_blank')}>
-                        Open {project.content_url}
-                      </Button>
+                {project.type === 'url' && (
+                  project.screenshot_path ? (
+                    <img
+                      src={`${BACKEND_URL}/api/files/screenshots/${project.screenshot_path.split('/').pop()}`}
+                      alt={project.name}
+                      className="w-full h-auto"
+                      style={{ pointerEvents: 'none', userSelect: 'none' }}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="text-center">
+                        <ExternalLink className="w-16 h-16 text-accent mx-auto mb-4" />
+                        <h3 className="text-xl font-semibold mb-2">Generating Screenshot...</h3>
+                        <p className="text-muted-foreground mb-4">Please wait or refresh the page</p>
+                        <Button variant="outline" onClick={() => window.location.reload()}>
+                          Refresh Page
+                        </Button>
+                      </div>
                     </div>
-                  </div>
+                  )
                 )}
                 {project.type === 'image' && project.file_path && (
                   <img
                     src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
                     alt={project.name}
                     className="w-full h-auto"
+                    style={{ pointerEvents: 'none', userSelect: 'none' }}
                   />
                 )}
                 {project.type === 'pdf' && project.file_path && (
