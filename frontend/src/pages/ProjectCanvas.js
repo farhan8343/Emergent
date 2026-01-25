@@ -409,7 +409,7 @@ export default function ProjectCanvas() {
               // THREAD: Single pin comments
               <>
                 <div className="p-4 border-b border-border/40">
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <Button
                         variant="ghost"
@@ -441,18 +441,6 @@ export default function ProjectCanvas() {
                       )}
                     </div>
                   </div>
-
-                  {/* Sort comments */}
-                  <Select value={sortOrder} onValueChange={setSortOrder}>
-                    <SelectTrigger className="h-9" data-testid="sort-comments">
-                      <ArrowUpDown className="w-4 h-4 mr-2" />
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="newest">Newest First</SelectItem>
-                      <SelectItem value="oldest">Oldest First</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
 
                 <ScrollArea className="flex-1 p-4">
