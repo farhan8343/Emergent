@@ -329,7 +329,7 @@ export default function ProjectCanvas() {
                   </div>
                   
                   {/* Search all pins */}
-                  <div className="relative">
+                  <div className="relative mb-2">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
                       placeholder="Search pins & comments..."
@@ -339,6 +339,18 @@ export default function ProjectCanvas() {
                       data-testid="search-pins"
                     />
                   </div>
+                  
+                  {/* Sort dropdown */}
+                  <Select value={sortOrder} onValueChange={setSortOrder}>
+                    <SelectTrigger className="h-9" data-testid="sort-pins">
+                      <ArrowUpDown className="w-4 h-4 mr-2" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">Newest First</SelectItem>
+                      <SelectItem value="oldest">Oldest First</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <ScrollArea className="flex-1">
