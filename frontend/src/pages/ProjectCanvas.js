@@ -56,6 +56,16 @@ export default function ProjectCanvas() {
     if (project && project.type === 'url') {
       setIframeLoaded(false);
       setIframeError(false);
+      
+      // Set a timeout to detect if iframe failed to load (sites that block embedding)
+      const timeout = setTimeout(() => {
+        if (!iframeLoaded) {
+          // If iframe hasn't loaded after 8 seconds, it's likely blocked
+          setIframeError(true);
+        }
+      }, 8000);
+      
+      return () => clearTimeout(timeout);
     }
   }, [project?.id]);
 
