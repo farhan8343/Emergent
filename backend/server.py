@@ -179,35 +179,33 @@ async def send_email(to_email: str, subject: str, body: str):
 async def capture_screenshot(url: str, pin_x: float, pin_y: float) -> Optional[str]:
     """Capture screenshot of page with pin location marked"""
     try:
-        # Disabled for now - requires playwright browser installation
-        return None
-        # async with async_playwright() as p:
-        #     browser = await p.chromium.launch(headless=True)
-        #     page = await browser.new_page(viewport={'width': 1920, 'height': 1080})
-        #     await page.goto(url, wait_until='networkidle', timeout=15000)
-        #     
-        #     screenshot_bytes = await page.screenshot(full_page=False)
-        #     await browser.close()
-        #     
-        #     img = Image.open(io.BytesIO(screenshot_bytes))
-        #     from PIL import ImageDraw
-        #     draw = ImageDraw.Draw(img)
-        #     
-        #     x_pos = int((pin_x / 100) * img.width)
-        #     y_pos = int((pin_y / 100) * img.height)
-        #     
-        #     radius = 20
-        #     draw.ellipse(
-        #         [(x_pos - radius, y_pos - radius), (x_pos + radius, y_pos + radius)],
-        #         outline='red',
-        #         width=3
-        #     )
-        #     
-        #     screenshot_filename = f"{uuid.uuid4()}.png"
-        #     screenshot_path = UPLOAD_DIR / 'screenshots' / screenshot_filename
-        #     img.save(screenshot_path, 'PNG', quality=85)
-        #     
-        #     return f"uploads/screenshots/{screenshot_filename}"
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page(viewport={'width': 1920, 'height': 1080})
+            await page.goto(url, wait_until='networkidle', timeout=30000)
+            
+            screenshot_bytes = await page.screenshot(full_page=True)
+            await browser.close()
+            
+            img = Image.open(io.BytesIO(screenshot_bytes))
+            from PIL import ImageDraw
+            draw = ImageDraw.Draw(img)
+            
+            x_pos = int((pin_x / 100) * img.width)
+            y_pos = int((pin_y / 100) * img.height)
+            
+            radius = 20
+            draw.ellipse(
+                [(x_pos - radius, y_pos - radius), (x_pos + radius, y_pos + radius)],
+                outline='red',
+                width=3
+            )
+            
+            screenshot_filename = f"{uuid.uuid4()}.png"
+            screenshot_path = UPLOAD_DIR / 'screenshots' / screenshot_filename
+            img.save(screenshot_path, 'PNG', quality=85)
+            
+            return f"uploads/screenshots/{screenshot_filename}"
     except Exception as e:
         logger.error(f"Failed to capture screenshot: {e}")
         return None
@@ -215,25 +213,44 @@ async def capture_screenshot(url: str, pin_x: float, pin_y: float) -> Optional[s
 async def generate_project_thumbnail(url: str) -> Optional[str]:
     """Generate thumbnail for project"""
     try:
-        # Disabled for now - requires playwright browser installation
-        return None
-        # async with async_playwright() as p:
-        #     browser = await p.chromium.launch(headless=True)
-        #     page = await browser.new_page(viewport={'width': 1200, 'height': 800})
-        #     await page.goto(url, wait_until='networkidle', timeout=15000)
-        #     screenshot_bytes = await page.screenshot()
-        #     await browser.close()
-        #     
-        #     img = Image.open(io.BytesIO(screenshot_bytes))
-        #     img.thumbnail((400, 300))
-        #     
-        #     thumbnail_filename = f"{uuid.uuid4()}_thumb.png"
-        #     thumbnail_path = UPLOAD_DIR / 'screenshots' / thumbnail_filename
-        #     img.save(thumbnail_path, 'PNG', quality=70)
-        #     
-        #     return f"uploads/screenshots/{thumbnail_filename}"
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page(viewport={'width': 1200, 'height': 800})
+            await page.goto(url, wait_until='networkidle', timeout=30000)
+            screenshot_bytes = await page.screenshot()
+            await browser.close()
+            
+            img = Image.open(io.BytesIO(screenshot_bytes))
+            img.thumbnail((400, 300))
+            
+            thumbnail_filename = f"{uuid.uuid4()}_thumb.png"
+            thumbnail_path = UPLOAD_DIR / 'screenshots' / thumbnail_filename
+            img.save(thumbnail_path, 'PNG', quality=70)
+            
+            return f"uploads/screenshots/{thumbnail_filename}"
     except Exception as e:
         logger.error(f"Failed to generate thumbnail: {e}")
+        return None
+
+async def capture_full_page_screenshot(url: str) -> Optional[str]:
+    """Capture full page screenshot for canvas display"""
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page(viewport={'width': 1920, 'height': 1080})
+            await page.goto(url, wait_until='networkidle', timeout=30000)
+            screenshot_bytes = await page.screenshot(full_page=True)
+            await browser.close()
+            
+            screenshot_filename = f"{uuid.uuid4()}_full.png"
+            screenshot_path = UPLOAD_DIR / 'screenshots' / screenshot_filename
+            
+            async with aiofiles.open(screenshot_path, 'wb') as f:
+                await f.write(screenshot_bytes)
+            
+            return f"uploads/screenshots/{screenshot_filename}"
+    except Exception as e:
+        logger.error(f"Failed to capture full page screenshot: {e}")
         return None
 
 # Auth Routes
