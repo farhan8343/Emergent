@@ -625,6 +625,39 @@ export default function ProjectCanvas() {
             </div>
 
             <div className="flex items-center space-x-3">
+              {/* Viewport Size Controls for URL projects */}
+              {project.type === 'url' && (
+                <div className="flex items-center border rounded-lg p-1 bg-secondary">
+                  <Button
+                    variant={viewportSize === 'desktop' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-8 px-3"
+                    onClick={() => setViewportSize('desktop')}
+                    data-testid="viewport-desktop"
+                  >
+                    <Monitor className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={viewportSize === 'tablet' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-8 px-3"
+                    onClick={() => setViewportSize('tablet')}
+                    data-testid="viewport-tablet"
+                  >
+                    <Tablet className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={viewportSize === 'mobile' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-8 px-3"
+                    onClick={() => setViewportSize('mobile')}
+                    data-testid="viewport-mobile"
+                  >
+                    <Smartphone className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
+
               <Tabs value={mode} onValueChange={setMode}>
                 <TabsList className="bg-secondary">
                   <TabsTrigger value="browse">
