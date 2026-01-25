@@ -139,7 +139,7 @@ export default function ProjectCanvas() {
   };
 
   const handleCanvasClick = useCallback(async (e) => {
-    if (mode !== 'comment' || !imageRef.current || !user) {
+    if (mode !== 'comment' || !canvasRef.current || !user) {
       if (mode === 'comment' && !user) {
         toast.error('Please login to add pins');
       }
@@ -151,14 +151,14 @@ export default function ProjectCanvas() {
       return;
     }
 
-    // Get the image element bounds (pins are relative to the image, not canvas)
-    const imageRect = imageRef.current.getBoundingClientRect();
+    // Get the canvas container bounds
+    const canvasRect = canvasRef.current.getBoundingClientRect();
     
-    // Calculate position as percentage of the image dimensions
-    const x = ((e.clientX - imageRect.left) / imageRect.width) * 100;
-    const y = ((e.clientY - imageRect.top) / imageRect.height) * 100;
+    // Calculate position as percentage of the canvas dimensions
+    const x = ((e.clientX - canvasRect.left) / canvasRect.width) * 100;
+    const y = ((e.clientY - canvasRect.top) / canvasRect.height) * 100;
 
-    // Ensure pin is within image bounds
+    // Ensure pin is within bounds
     if (x < 0 || x > 100 || y < 0 || y > 100) {
       return;
     }
