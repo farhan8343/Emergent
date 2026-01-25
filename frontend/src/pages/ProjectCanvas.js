@@ -359,7 +359,7 @@ export default function ProjectCanvas() {
 
                 <ScrollArea className="flex-1">
                   <div className="p-4 space-y-2">
-                    {filteredPins.length === 0 ? (
+                    {filteredAndSortedPins.length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-8">
                         {searchQuery ? 'No pins found' : visiblePins.length === 0 ? 'No pins yet. Click canvas to create.' : 'No pins to show'}
                       </p>
