@@ -652,90 +652,117 @@ export default function ProjectCanvas() {
             </div>
           </div>
 
-          <div ref={scrollContainerRef} className="flex-1 overflow-auto bg-secondary/30 p-8">
-            <div className="mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+          <div ref={scrollContainerRef} className="flex-1 overflow-auto bg-secondary/30 p-4">
+            <div 
+              className="mx-auto bg-white rounded-xl shadow-lg overflow-hidden"
+              style={{ 
+                width: viewportSize === 'mobile' ? '375px' : viewportSize === 'tablet' ? '768px' : '100%',
+                maxWidth: '100%'
+              }}
+            >
               <div
                 ref={canvasRef}
                 className="relative"
                 onClick={handleCanvasClick}
                 style={{ 
-                  cursor: mode === 'comment' && user ? 'crosshair' : 'default'
+                  cursor: mode === 'comment' && user ? 'crosshair' : 'default',
+                  minHeight: project.type === 'url' ? '800px' : 'auto'
                 }}
               >
-                {/* URL-based project with screenshot */}
-                {project.type === 'url' && (
-                  screenshotLoading ? (
-                    <div className="flex items-center justify-center py-32">
-                      <div className="text-center">
-                        <Loader2 className="w-16 h-16 text-accent mx-auto mb-4 animate-spin" />
-                        <h3 className="text-xl font-semibold mb-2">Capturing Screenshot...</h3>
-                        <p className="text-muted-foreground">Please wait while we capture {project.content_url}</p>
+                {/* URL-based project with LIVE iframe preview */}
+                {project.type === 'url' && project.content_url && (
+                  <>
+                    {/* Loading state */}
+                    {!iframeLoaded && !iframeError && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-secondary/50 z-10">
+                        <div className="text-center">
+                          <Loader2 className="w-12 h-12 text-accent mx-auto mb-4 animate-spin" />
+                          <h3 className="text-lg font-semibold mb-2">Loading Website...</h3>
+                          <p className="text-sm text-muted-foreground">{project.content_url}</p>
+                        </div>
                       </div>
-                    </div>
-                  ) : screenshotUrl ? (
-                    <div className="relative">
-                      <img
-                        ref={imageRef}
-                        src={screenshotUrl}
-                        alt={project.name}
-                        className="w-full h-auto block"
-                        onLoad={() => setImageLoaded(true)}
-                        onError={(e) => {
-                          console.error('Image failed to load');
-                          toast.error('Failed to load screenshot');
+                    )}
+                    
+                    {/* Error state - site blocks iframe */}
+                    {iframeError && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-secondary/80 z-10">
+                        <div className="text-center p-8">
+                          <X className="w-16 h-16 text-red-400 mx-auto mb-4" />
+                          <h3 className="text-xl font-semibold mb-2">Website Cannot Be Embedded</h3>
+                          <p className="text-muted-foreground mb-4 max-w-md">
+                            This website blocks embedding due to security settings. 
+                            You can still open it in a new tab to review.
+                          </p>
+                          <Button onClick={() => window.open(project.content_url, '_blank')}>
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            Open in New Tab
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Live iframe */}
+                    <iframe
+                      ref={iframeRef}
+                      src={project.content_url}
+                      title={project.name}
+                      className="w-full border-0"
+                      style={{ 
+                        height: '800px',
+                        pointerEvents: mode === 'comment' ? 'none' : 'auto'
+                      }}
+                      onLoad={handleIframeLoad}
+                      onError={handleIframeError}
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                      data-testid="project-iframe"
+                    />
+                    
+                    {/* Transparent overlay for pin placement in comment mode */}
+                    {mode === 'comment' && (
+                      <div 
+                        className="absolute inset-0 z-20"
+                        style={{ 
+                          background: 'transparent',
+                          cursor: user ? 'crosshair' : 'default'
                         }}
-                        data-testid="project-screenshot"
                       />
-                      {/* Pins rendered inside image container */}
-                      {imageLoaded && visiblePins.map((pin) => {
-                        const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
-                        return (
-                          <div
-                            key={pin.id}
-                            className={`pin-marker absolute w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer z-10 ${
-                              pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
-                            } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30' : ''} hover:scale-110 transition-transform`}
-                            style={{
-                              left: `${pin.x}%`,
-                              top: `${pin.y}%`,
-                              transform: 'translate(-50%, -50%)'
-                            }}
-                            onClick={(e) => handlePinClick(pin, e)}
-                            data-testid={`pin-${pin.id}`}
-                          >
-                            {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center py-32">
-                      <div className="text-center">
-                        <ExternalLink className="w-16 h-16 text-accent/40 mx-auto mb-4" />
-                        <h3 className="text-xl font-semibold mb-2">Ready to Capture</h3>
-                        <p className="text-muted-foreground mb-4">Click below to capture a screenshot of the website</p>
-                        <Button onClick={captureScreenshot} disabled={screenshotLoading}>
-                          <ImageIcon className="w-4 h-4 mr-2" />
-                          Capture Screenshot
-                        </Button>
-                      </div>
-                    </div>
-                  )
+                    )}
+                    
+                    {/* Pins overlay */}
+                    {visiblePins.map((pin) => {
+                      const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
+                      return (
+                        <div
+                          key={pin.id}
+                          className={`pin-marker absolute w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer z-30 ${
+                            pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
+                          } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30' : ''} hover:scale-110 transition-transform`}
+                          style={{
+                            left: `${pin.x}%`,
+                            top: `${pin.y}%`,
+                            transform: 'translate(-50%, -50%)'
+                          }}
+                          onClick={(e) => handlePinClick(pin, e)}
+                          data-testid={`pin-${pin.id}`}
+                        >
+                          {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
+                        </div>
+                      );
+                    })}
+                  </>
                 )}
 
                 {/* Image-based project */}
                 {project.type === 'image' && project.file_path && (
                   <div className="relative">
                     <img
-                      ref={imageRef}
                       src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
                       alt={project.name}
                       className="w-full h-auto block"
-                      onLoad={() => setImageLoaded(true)}
                       data-testid="project-image"
                     />
                     {/* Pins for image projects */}
-                    {imageLoaded && visiblePins.map((pin) => {
+                    {visiblePins.map((pin) => {
                       const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
                       return (
                         <div
