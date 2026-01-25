@@ -513,13 +513,13 @@ async def get_pins(project_id: str, current_user: dict = Depends(get_current_use
     return [Pin(**p) for p in pins]
 
 @api_router.put("/pins/{pin_id}/status")
-async def update_pin_status(pin_id: str, status: str, current_user: dict = Depends(get_current_user)):
-    if status not in ['open', 'resolved']:
+async def update_pin_status(pin_id: str, new_status: str, current_user: dict = Depends(get_current_user)):
+    if new_status not in ['open', 'resolved']:
         raise HTTPException(status_code=400, detail='Invalid status')
     
     result = await db.pins.update_one(
         {'id': pin_id},
-        {'$set': {'status': status}}
+        {'$set': {'status': new_status}}
     )
     
     if result.matched_count == 0:
