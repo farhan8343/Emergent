@@ -753,10 +753,10 @@ export default function ProjectCanvas() {
                       </div>
                     )}
                     
-                    {/* Live iframe */}
+                    {/* Live iframe via reverse proxy - stays on app domain */}
                     <iframe
                       ref={iframeRef}
-                      src={project.content_url}
+                      src={getProxyUrl(project.content_url)}
                       title={project.name}
                       className="w-full border-0"
                       style={{ 
@@ -765,7 +765,6 @@ export default function ProjectCanvas() {
                       }}
                       onLoad={handleIframeLoad}
                       onError={handleIframeError}
-                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                       data-testid="project-iframe"
                     />
                     
