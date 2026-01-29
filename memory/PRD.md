@@ -8,6 +8,7 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 - **Backend**: FastAPI, Python
 - **Database**: MongoDB (Motor async driver)
 - **Authentication**: JWT-based
+- **Reverse Proxy**: httpx + BeautifulSoup (HTML rewriting)
 
 ## User Personas
 1. **Account Owner** - Creates team, manages members, views stats
@@ -23,9 +24,20 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 
 ### Project Management
 - [x] Create projects from URLs, images, and PDFs
-- [x] **Live website preview via iframe** (no screenshots needed)
+- [x] **Server-side reverse proxy** for external websites
+- [x] HTML rewriting to route all URLs through proxy
+- [x] Annotation script injection
 - [x] Responsive viewport controls (Desktop/Tablet/Mobile)
-- [x] Project search and sorting (newest, oldest, name)
+
+### Reverse Proxy System (Markup.io-style)
+- [x] External websites fetched server-side via httpx
+- [x] All URLs rewritten to `/api/proxy?url=...`
+- [x] Security headers (X-Frame-Options, CSP) stripped
+- [x] Links, images, scripts, stylesheets all proxied
+- [x] Navigation stays within iframe (same-origin)
+- [x] Annotation script injected into every page
+- [x] CSS url() references rewritten
+- [x] Form actions proxied
 
 ### Pin-Based Commenting
 - [x] Click on live website to create pins
@@ -46,7 +58,7 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 - Pro: 10 members, 5GB storage
 - Business: 50 members, 20GB storage
 
-## What's Been Implemented (as of Jan 25, 2026)
+## What's Been Implemented (as of Jan 29, 2026)
 
 ### Phase 1: Core Infrastructure ✅
 - FastAPI backend with all routes prefixed /api
@@ -55,15 +67,16 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 - React frontend with Shadcn UI components
 - File upload and serving system
 
-### Phase 2: Live Website Preview ✅
-- **Iframe-based live website embedding**
-- Responsive viewport controls (Desktop 100%, Tablet 768px, Mobile 375px)
-- Transparent overlay for pin placement in Comment mode
-- Error detection for sites that block embedding
-- "Open in New Tab" fallback for blocked sites
+### Phase 2: Reverse Proxy System ✅
+- **Server-side website proxy** (`/api/proxy?url=...`)
+- HTML parsing and URL rewriting using BeautifulSoup
+- Security header removal for seamless iframe embedding
+- Annotation script injection for cross-page persistence
+- CSS url() rewriting for proper asset loading
+- Form and link interception for navigation
 
 ### Phase 3: Pin-Based Comments ✅
-- Pin creation by clicking on live preview
+- Pin creation by clicking on proxied website
 - Position calculation relative to canvas element
 - Comment threads per pin
 - File attachment support
@@ -75,8 +88,13 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 - Project search and sorting
 - Comment sidebar with search/sort
 - Browse and Comment mode toggle
+- Viewport size controls
 
 ## API Endpoints
+
+### Reverse Proxy
+- GET /api/proxy?url=<encoded_url> (proxy external pages)
+- POST /api/proxy?url=<encoded_url> (handle form submissions)
 
 ### Authentication
 - POST /api/auth/register
@@ -126,19 +144,6 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 }
 ```
 
-### teams
-```json
-{
-  "id": "uuid",
-  "name": "string",
-  "plan": "starter|pro|business|enterprise",
-  "owner_id": "uuid",
-  "member_count": "int",
-  "storage_used_mb": "float",
-  "created_at": "datetime"
-}
-```
-
 ### projects
 ```json
 {
@@ -166,30 +171,15 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 }
 ```
 
-### comments
-```json
-{
-  "id": "uuid",
-  "pin_id": "uuid",
-  "author_type": "team|guest",
-  "author_id": "uuid|null",
-  "author_name": "string",
-  "guest_email": "string|null",
-  "content": "string",
-  "attachment_path": "string|null",
-  "created_at": "datetime"
-}
-```
-
 ## Test Credentials
-- Email: test@example.com
-- Password: test123
+- **User**: test@example.com / test123
+- **Super Admin**: admin@markuply.com / admin123
 
 ## Known Limitations
-1. **Sites blocking iframes**: Many websites (including brandlume.com) block embedding via X-Frame-Options or CSP headers. These sites show an error message with "Open in New Tab" option.
-2. Stripe payment integration not implemented (MOCKED)
-3. Email notifications log to console only (MOCKED)
-4. Plan limits enforced but not strictly validated
+1. **Cloudflare-protected sites** may block the proxy due to bot detection
+2. Sites with strict CSP may have broken JavaScript
+3. Some complex SPAs may not work perfectly through proxy
+4. Stripe payment integration not implemented (MOCKED)
 
 ## Prioritized Backlog
 
@@ -205,27 +195,21 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 - [ ] Stripe payment integration
 - [ ] Enforce plan limits (member count, storage)
 - [ ] Advanced annotation tools (arrows, rectangles)
-- [ ] Project versioning/history
 
 ### P3 - Low Priority
 - [ ] Export comments as PDF
 - [ ] Bulk pin management
 - [ ] Comment mentions (@user)
-- [ ] Keyboard shortcuts
 
 ## Architecture Notes
 
-### Live Website Preview Flow
-1. User creates project with URL
-2. User opens project canvas
-3. Iframe loads the live website directly
-4. In Comment mode, transparent overlay captures clicks
-5. Pin positions stored as percentage of canvas dimensions
-
-### Important Security Note
-The iframe uses `sandbox="allow-scripts allow-same-origin allow-forms allow-popups"` to allow website functionality while maintaining security.
-
-### Pin Position Calculation
-- Pins stored as percentage (0-100%) of canvas dimensions
-- Position calculated relative to canvas element bounding box
-- Pins render as absolute positioned elements over the iframe
+### Reverse Proxy Flow
+1. User creates project with target URL
+2. Frontend generates proxy URL: `/api/proxy?url=<encoded_url>`
+3. Backend fetches page via httpx with browser-like headers
+4. BeautifulSoup parses HTML and rewrites all URLs
+5. Security headers stripped from response
+6. Annotation script injected into body
+7. Modified HTML served from app domain
+8. Navigation within iframe stays on app domain
+9. Pins persist across page navigations
