@@ -888,6 +888,335 @@ async def get_super_stats(current_user: dict = Depends(get_current_user)):
         'total_storage_mb': total_storage_mb
     }
 
+# =============================================================================
+# REVERSE PROXY FOR EXTERNAL WEBSITES
+# =============================================================================
+
+# HTTP client for proxy requests
+http_client = httpx.AsyncClient(
+    follow_redirects=True,
+    timeout=30.0,
+    headers={
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+)
+
+# Headers to remove from proxied responses (security headers that block framing)
+HEADERS_TO_REMOVE = [
+    'x-frame-options',
+    'content-security-policy',
+    'content-security-policy-report-only',
+    'x-content-type-options',
+    'x-xss-protection',
+    'referrer-policy',
+    'permissions-policy',
+    'cross-origin-opener-policy',
+    'cross-origin-embedder-policy',
+    'cross-origin-resource-policy',
+]
+
+def get_base_url(url: str) -> str:
+    """Extract base URL (scheme + netloc) from a URL"""
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+def make_absolute_url(base_url: str, relative_url: str) -> str:
+    """Convert a relative URL to absolute using the base URL"""
+    if not relative_url:
+        return relative_url
+    if relative_url.startswith('data:') or relative_url.startswith('javascript:') or relative_url.startswith('#'):
+        return relative_url
+    return urljoin(base_url, relative_url)
+
+def create_proxy_url(target_url: str, base_url: str) -> str:
+    """Create a proxy URL for the given target URL"""
+    absolute_url = make_absolute_url(base_url, target_url)
+    if not absolute_url or absolute_url.startswith('data:') or absolute_url.startswith('javascript:') or absolute_url.startswith('#'):
+        return target_url
+    return f"/api/proxy?url={quote(absolute_url, safe='')}"
+
+def rewrite_css_urls(css_content: str, base_url: str) -> str:
+    """Rewrite url() references in CSS content"""
+    def replace_url(match):
+        url = match.group(1).strip('\'"')
+        if url.startswith('data:'):
+            return match.group(0)
+        proxy_url = create_proxy_url(url, base_url)
+        return f"url('{proxy_url}')"
+    
+    # Match url() patterns in CSS
+    pattern = r'url\([\'"]?([^\'"\)]+)[\'"]?\)'
+    return re.sub(pattern, replace_url, css_content)
+
+def rewrite_html(html_content: str, base_url: str, project_id: str = None) -> str:
+    """Rewrite HTML to route all URLs through the proxy and inject annotation script"""
+    soup = BeautifulSoup(html_content, 'lxml')
+    
+    # Rewrite <a> href attributes
+    for tag in soup.find_all('a', href=True):
+        original_href = tag['href']
+        if original_href and not original_href.startswith('#') and not original_href.startswith('javascript:'):
+            tag['href'] = create_proxy_url(original_href, base_url)
+            # Add target="_self" to keep navigation in iframe
+            tag['target'] = '_self'
+    
+    # Rewrite <img> src attributes
+    for tag in soup.find_all('img', src=True):
+        tag['src'] = create_proxy_url(tag['src'], base_url)
+    
+    # Rewrite <img> srcset attributes
+    for tag in soup.find_all('img', srcset=True):
+        srcset_parts = []
+        for part in tag['srcset'].split(','):
+            part = part.strip()
+            if ' ' in part:
+                url, descriptor = part.rsplit(' ', 1)
+                srcset_parts.append(f"{create_proxy_url(url.strip(), base_url)} {descriptor}")
+            else:
+                srcset_parts.append(create_proxy_url(part, base_url))
+        tag['srcset'] = ', '.join(srcset_parts)
+    
+    # Rewrite <script> src attributes
+    for tag in soup.find_all('script', src=True):
+        tag['src'] = create_proxy_url(tag['src'], base_url)
+    
+    # Rewrite <link> href attributes (stylesheets, icons, etc.)
+    for tag in soup.find_all('link', href=True):
+        tag['href'] = create_proxy_url(tag['href'], base_url)
+    
+    # Rewrite <form> action attributes
+    for tag in soup.find_all('form', action=True):
+        tag['action'] = create_proxy_url(tag['action'], base_url)
+        tag['target'] = '_self'
+    
+    # Rewrite <source> src and srcset attributes (for video/audio/picture)
+    for tag in soup.find_all('source'):
+        if tag.get('src'):
+            tag['src'] = create_proxy_url(tag['src'], base_url)
+        if tag.get('srcset'):
+            srcset_parts = []
+            for part in tag['srcset'].split(','):
+                part = part.strip()
+                if ' ' in part:
+                    url, descriptor = part.rsplit(' ', 1)
+                    srcset_parts.append(f"{create_proxy_url(url.strip(), base_url)} {descriptor}")
+                else:
+                    srcset_parts.append(create_proxy_url(part, base_url))
+            tag['srcset'] = ', '.join(srcset_parts)
+    
+    # Rewrite <video> and <audio> src attributes
+    for tag in soup.find_all(['video', 'audio'], src=True):
+        tag['src'] = create_proxy_url(tag['src'], base_url)
+    
+    # Rewrite <video> poster attribute
+    for tag in soup.find_all('video', poster=True):
+        tag['poster'] = create_proxy_url(tag['poster'], base_url)
+    
+    # Rewrite <iframe> src attributes (nested iframes)
+    for tag in soup.find_all('iframe', src=True):
+        if not tag['src'].startswith('data:'):
+            tag['src'] = create_proxy_url(tag['src'], base_url)
+    
+    # Rewrite <object> data attributes
+    for tag in soup.find_all('object', data=True):
+        tag['data'] = create_proxy_url(tag['data'], base_url)
+    
+    # Rewrite <embed> src attributes
+    for tag in soup.find_all('embed', src=True):
+        tag['src'] = create_proxy_url(tag['src'], base_url)
+    
+    # Rewrite inline style attributes with url() references
+    for tag in soup.find_all(style=True):
+        tag['style'] = rewrite_css_urls(tag['style'], base_url)
+    
+    # Rewrite <style> tags
+    for tag in soup.find_all('style'):
+        if tag.string:
+            tag.string = rewrite_css_urls(tag.string, base_url)
+    
+    # Rewrite meta refresh redirects
+    for tag in soup.find_all('meta', attrs={'http-equiv': re.compile('refresh', re.I)}):
+        content = tag.get('content', '')
+        if 'url=' in content.lower():
+            match = re.search(r'url=([^\s;]+)', content, re.I)
+            if match:
+                original_url = match.group(1).strip('\'"')
+                proxy_url = create_proxy_url(original_url, base_url)
+                tag['content'] = re.sub(r'url=[^\s;]+', f'url={proxy_url}', content, flags=re.I)
+    
+    # Add base tag to help with any remaining relative URLs
+    head = soup.find('head')
+    if head:
+        # Remove any existing base tag
+        for existing_base in head.find_all('base'):
+            existing_base.decompose()
+    
+    # Inject annotation script at the end of body
+    body = soup.find('body')
+    if body:
+        annotation_script = soup.new_tag('script')
+        annotation_script.string = f'''
+        (function() {{
+            // Markuply Annotation Layer
+            window.MARKUPLY_PROJECT_ID = "{project_id or ''}";
+            window.MARKUPLY_BASE_URL = "{base_url}";
+            
+            // Intercept link clicks to use proxy navigation
+            document.addEventListener('click', function(e) {{
+                var target = e.target.closest('a');
+                if (target && target.href) {{
+                    // Check if it's an internal link that needs proxy
+                    if (target.href.indexOf('/api/proxy') === -1 && 
+                        !target.href.startsWith('javascript:') && 
+                        !target.href.startsWith('#') &&
+                        !target.href.startsWith('data:')) {{
+                        e.preventDefault();
+                        var proxyUrl = '/api/proxy?url=' + encodeURIComponent(target.href);
+                        window.location.href = proxyUrl;
+                    }}
+                }}
+            }}, true);
+            
+            // Intercept form submissions
+            document.addEventListener('submit', function(e) {{
+                var form = e.target;
+                if (form.action && form.action.indexOf('/api/proxy') === -1) {{
+                    e.preventDefault();
+                    var proxyAction = '/api/proxy?url=' + encodeURIComponent(form.action);
+                    form.action = proxyAction;
+                    form.submit();
+                }}
+            }}, true);
+            
+            // Notify parent window that page loaded
+            if (window.parent !== window) {{
+                window.parent.postMessage({{
+                    type: 'MARKUPLY_PAGE_LOADED',
+                    url: window.location.href,
+                    title: document.title
+                }}, '*');
+            }}
+        }})();
+        '''
+        body.append(annotation_script)
+    
+    return str(soup)
+
+@api_router.get("/proxy")
+async def proxy_page(url: str = Query(..., description="URL to proxy"), project_id: str = Query(None)):
+    """Proxy an external webpage, rewriting URLs and injecting annotation scripts"""
+    try:
+        # Decode the URL if it's encoded
+        target_url = unquote(url)
+        
+        # Validate URL
+        parsed = urlparse(target_url)
+        if not parsed.scheme or not parsed.netloc:
+            raise HTTPException(status_code=400, detail="Invalid URL")
+        
+        if parsed.scheme not in ['http', 'https']:
+            raise HTTPException(status_code=400, detail="Only HTTP/HTTPS URLs are supported")
+        
+        base_url = get_base_url(target_url)
+        
+        # Fetch the page
+        response = await http_client.get(target_url)
+        
+        # Get content type
+        content_type = response.headers.get('content-type', '').lower()
+        
+        # Prepare response headers (filter out security headers)
+        response_headers = {}
+        for key, value in response.headers.items():
+            if key.lower() not in HEADERS_TO_REMOVE:
+                response_headers[key] = value
+        
+        # Handle different content types
+        if 'text/html' in content_type:
+            # Rewrite HTML content
+            html_content = response.text
+            rewritten_html = rewrite_html(html_content, base_url, project_id)
+            
+            return HTMLResponse(
+                content=rewritten_html,
+                status_code=response.status_code,
+                headers={
+                    'Content-Type': 'text/html; charset=utf-8',
+                    'X-Proxied-URL': target_url,
+                }
+            )
+        
+        elif 'text/css' in content_type:
+            # Rewrite CSS content
+            css_content = response.text
+            rewritten_css = rewrite_css_urls(css_content, base_url)
+            
+            return Response(
+                content=rewritten_css,
+                status_code=response.status_code,
+                media_type='text/css',
+                headers={'X-Proxied-URL': target_url}
+            )
+        
+        elif 'javascript' in content_type or 'text/javascript' in content_type:
+            # Pass through JavaScript (might need URL rewriting in future)
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                media_type=content_type.split(';')[0],
+                headers={'X-Proxied-URL': target_url}
+            )
+        
+        else:
+            # Pass through other content types (images, fonts, etc.)
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                media_type=content_type.split(';')[0] if content_type else 'application/octet-stream',
+                headers={'X-Proxied-URL': target_url}
+            )
+    
+    except httpx.RequestError as e:
+        logger.error(f"Proxy request failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Failed to fetch URL: {str(e)}")
+    except Exception as e:
+        logger.error(f"Proxy error: {e}")
+        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+
+@api_router.post("/proxy")
+async def proxy_page_post(
+    url: str = Query(..., description="URL to proxy"),
+    project_id: str = Query(None)
+):
+    """Handle POST requests through the proxy"""
+    try:
+        target_url = unquote(url)
+        parsed = urlparse(target_url)
+        if not parsed.scheme or not parsed.netloc:
+            raise HTTPException(status_code=400, detail="Invalid URL")
+        
+        base_url = get_base_url(target_url)
+        
+        # For POST requests, we'll forward as GET for now (form handling is complex)
+        response = await http_client.get(target_url)
+        
+        content_type = response.headers.get('content-type', '').lower()
+        
+        if 'text/html' in content_type:
+            html_content = response.text
+            rewritten_html = rewrite_html(html_content, base_url, project_id)
+            return HTMLResponse(content=rewritten_html, status_code=response.status_code)
+        
+        return Response(
+            content=response.content,
+            status_code=response.status_code,
+            media_type=content_type.split(';')[0] if content_type else 'application/octet-stream'
+        )
+    
+    except Exception as e:
+        logger.error(f"Proxy POST error: {e}")
+        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+
 app.include_router(api_router)
 
 app.add_middleware(
