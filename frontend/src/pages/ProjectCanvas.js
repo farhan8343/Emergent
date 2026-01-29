@@ -56,18 +56,21 @@ export default function ProjectCanvas() {
     if (project && project.type === 'url') {
       setIframeLoaded(false);
       setIframeError(false);
-      
-      // Set a timeout to detect if iframe failed to load (sites that block embedding)
-      const timeout = setTimeout(() => {
-        if (!iframeLoaded) {
-          // If iframe hasn't loaded after 8 seconds, it's likely blocked
-          setIframeError(true);
-        }
-      }, 8000);
-      
-      return () => clearTimeout(timeout);
     }
   }, [project?.id]);
+
+  // Listen for messages from proxied pages
+  useEffect(() => {
+    const handleMessage = (event) => {
+      if (event.data?.type === 'MARKUPLY_PAGE_LOADED') {
+        setIframeLoaded(true);
+        setIframeError(false);
+      }
+    };
+    
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   useEffect(() => {
     if (pins.length > 0) {
@@ -81,6 +84,13 @@ export default function ProjectCanvas() {
       setSidebarView('thread');
     }
   }, [selectedPin?.id]);
+
+  // Generate proxy URL for the external website
+  const getProxyUrl = useCallback((url) => {
+    if (!url) return null;
+    const encodedUrl = encodeURIComponent(url);
+    return `${API}/proxy?url=${encodedUrl}&project_id=${id}`;
+  }, [id]);
 
   const handleIframeLoad = useCallback(() => {
     setIframeLoaded(true);
