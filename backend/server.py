@@ -1187,9 +1187,25 @@ def rewrite_html(html_content: str, base_url: str, project_id: str = None) -> st
     
     return str(soup)
 
+# Simple HTTP client for non-HTML assets
+import httpx
+_http_client = None
+
+async def get_http_client():
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=30.0,
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        )
+    return _http_client
+
 @api_router.get("/proxy")
 async def proxy_page(url: str = Query(..., description="URL to proxy"), project_id: str = Query(None)):
-    """Proxy an external webpage, rewriting URLs and injecting annotation scripts"""
+    """Proxy an external webpage using Playwright (handles Cloudflare), rewriting URLs and injecting annotation scripts"""
     try:
         # Decode the URL if it's encoded
         target_url = unquote(url)
@@ -1204,60 +1220,69 @@ async def proxy_page(url: str = Query(..., description="URL to proxy"), project_
         
         base_url = get_base_url(target_url)
         
-        # Fetch the page
-        response = await http_client.get(target_url)
+        # Check if this is likely an HTML page or an asset
+        path_lower = parsed.path.lower()
+        is_asset = any(path_lower.endswith(ext) for ext in [
+            '.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', 
+            '.ico', '.woff', '.woff2', '.ttf', '.eot', '.otf', '.mp4', '.webm',
+            '.pdf', '.zip', '.json', '.xml'
+        ])
         
-        # Get content type
-        content_type = response.headers.get('content-type', '').lower()
+        if is_asset:
+            # Use simple HTTP client for assets (faster)
+            http_client = await get_http_client()
+            response = await http_client.get(target_url)
+            content_type = response.headers.get('content-type', '').lower()
+            
+            if 'text/css' in content_type:
+                css_content = response.text
+                rewritten_css = rewrite_css_urls(css_content, base_url)
+                return Response(content=rewritten_css, status_code=200, media_type='text/css')
+            
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                media_type=content_type.split(';')[0] if content_type else 'application/octet-stream'
+            )
         
-        # Prepare response headers (filter out security headers)
-        response_headers = {}
-        for key, value in response.headers.items():
-            if key.lower() not in HEADERS_TO_REMOVE:
-                response_headers[key] = value
+        # Use Playwright for HTML pages (handles Cloudflare challenges)
+        browser = await get_browser()
+        page = await browser.new_page(
+            viewport={'width': 1920, 'height': 1080},
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        )
         
-        # Handle different content types
-        if 'text/html' in content_type:
+        try:
+            # Navigate to the page and wait for it to load
+            response = await page.goto(target_url, wait_until='domcontentloaded', timeout=30000)
+            
+            # Wait a bit for any JavaScript to execute
+            await page.wait_for_timeout(1000)
+            
+            # Get the page content after JavaScript execution
+            html_content = await page.content()
+            
+            # Get the final URL (in case of redirects)
+            final_url = page.url
+            final_base_url = get_base_url(final_url)
+            
             # Rewrite HTML content
-            html_content = response.text
-            rewritten_html = rewrite_html(html_content, base_url, project_id)
+            rewritten_html = rewrite_html(html_content, final_base_url, project_id)
             
             return HTMLResponse(
                 content=rewritten_html,
-                status_code=response.status_code,
+                status_code=200,
                 headers={
                     'Content-Type': 'text/html; charset=utf-8',
-                    'X-Proxied-URL': target_url,
+                    'X-Proxied-URL': final_url,
                 }
             )
-        
-        elif 'text/css' in content_type:
-            # Rewrite CSS content
-            css_content = response.text
-            rewritten_css = rewrite_css_urls(css_content, base_url)
-            
-            return Response(
-                content=rewritten_css,
-                status_code=response.status_code,
-                media_type='text/css',
-                headers={'X-Proxied-URL': target_url}
-            )
-        
-        elif 'javascript' in content_type or 'text/javascript' in content_type:
-            # Pass through JavaScript (might need URL rewriting in future)
-            return Response(
-                content=response.content,
-                status_code=response.status_code,
-                media_type=content_type.split(';')[0],
-                headers={'X-Proxied-URL': target_url}
-            )
-        
-        else:
-            # Pass through other content types (images, fonts, etc.)
-            return Response(
-                content=response.content,
-                status_code=response.status_code,
-                media_type=content_type.split(';')[0] if content_type else 'application/octet-stream',
+        finally:
+            await page.close()
+    
+    except Exception as e:
+        logger.error(f"Proxy error: {e}")
+        raise HTTPException(status_code=502, detail=f"Failed to fetch URL: {str(e)}")
                 headers={'X-Proxied-URL': target_url}
             )
     
