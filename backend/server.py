@@ -115,6 +115,9 @@ class PinCreate(BaseModel):
     project_id: str
     x: float
     y: float
+    page_url: Optional[str] = None
+    scroll_x: Optional[float] = 0
+    scroll_y: Optional[float] = 0
 
 class Pin(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -122,6 +125,9 @@ class Pin(BaseModel):
     project_id: str
     x: float
     y: float
+    page_url: Optional[str] = None
+    scroll_x: Optional[float] = 0
+    scroll_y: Optional[float] = 0
     status: str
     created_by: str
     created_at: str
