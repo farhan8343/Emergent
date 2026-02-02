@@ -967,17 +967,24 @@ async def get_super_stats(current_user: dict = Depends(get_current_user)):
     }
 
 # =============================================================================
-# REVERSE PROXY FOR EXTERNAL WEBSITES
+# REVERSE PROXY FOR EXTERNAL WEBSITES (Using Playwright for Cloudflare bypass)
 # =============================================================================
 
-# HTTP client for proxy requests
-http_client = httpx.AsyncClient(
-    follow_redirects=True,
-    timeout=30.0,
-    headers={
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
-)
+# Browser instance for proxy (reused)
+_browser_instance = None
+_browser_lock = asyncio.Lock()
+
+async def get_browser():
+    """Get or create a browser instance for proxy requests"""
+    global _browser_instance
+    async with _browser_lock:
+        if _browser_instance is None or not _browser_instance.is_connected():
+            playwright = await async_playwright().start()
+            _browser_instance = await playwright.chromium.launch(
+                headless=True,
+                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+            )
+        return _browser_instance
 
 # Headers to remove from proxied responses (security headers that block framing)
 HEADERS_TO_REMOVE = [
