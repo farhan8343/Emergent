@@ -864,7 +864,7 @@ export default function ProjectCanvas() {
                     <p className="text-muted-foreground">No comments yet</p>
                     {mode === 'comment' && (
                       <p className="text-sm text-muted-foreground mt-2">
-                        Click "Add Comment" to create your first comment
+                        Click &quot;Add Comment&quot; to create your first comment
                       </p>
                     )}
                   </div>
