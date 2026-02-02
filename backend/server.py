@@ -509,6 +509,9 @@ async def create_pin(pin_data: PinCreate, current_user: dict = Depends(get_curre
         'project_id': pin_data.project_id,
         'x': pin_data.x,
         'y': pin_data.y,
+        'page_url': pin_data.page_url or project.get('content_url'),
+        'scroll_x': pin_data.scroll_x or 0,
+        'scroll_y': pin_data.scroll_y or 0,
         'status': 'open',
         'created_by': current_user['id'],
         'created_at': datetime.now(timezone.utc).isoformat()
@@ -518,7 +521,11 @@ async def create_pin(pin_data: PinCreate, current_user: dict = Depends(get_curre
     return Pin(**pin)
 
 @api_router.get("/pins/{project_id}", response_model=List[Pin])
-async def get_pins(project_id: str, current_user: dict = Depends(get_current_user)):
+async def get_pins(
+    project_id: str, 
+    page_url: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
     project = await db.projects.find_one(
         {'id': project_id, 'team_id': current_user['team_id']},
         {'_id': 0}
@@ -526,7 +533,11 @@ async def get_pins(project_id: str, current_user: dict = Depends(get_current_use
     if not project:
         raise HTTPException(status_code=404, detail='Project not found')
     
-    pins = await db.pins.find({'project_id': project_id}, {'_id': 0}).to_list(1000)
+    query = {'project_id': project_id}
+    if page_url:
+        query['page_url'] = page_url
+    
+    pins = await db.pins.find(query, {'_id': 0}).to_list(1000)
     return [Pin(**p) for p in pins]
 
 @api_router.put("/pins/{pin_id}/status")
