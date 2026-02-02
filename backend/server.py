@@ -555,6 +555,67 @@ async def update_pin_status(pin_id: str, new_status: str, current_user: dict = D
     
     return {'message': 'Pin status updated'}
 
+# Project Pages endpoint - get unique page URLs with comments
+@api_router.get("/projects/{project_id}/pages")
+async def get_project_pages(project_id: str, current_user: dict = Depends(get_current_user)):
+    project = await db.projects.find_one(
+        {'id': project_id, 'team_id': current_user['team_id']},
+        {'_id': 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    
+    # Get unique page URLs from pins
+    pins = await db.pins.find({'project_id': project_id}, {'_id': 0, 'page_url': 1}).to_list(1000)
+    page_urls = list(set(p.get('page_url') for p in pins if p.get('page_url')))
+    
+    # Include the base project URL
+    if project.get('content_url') and project['content_url'] not in page_urls:
+        page_urls.insert(0, project['content_url'])
+    
+    return page_urls
+
+# Project Users endpoint - get all users who have commented or are team members
+@api_router.get("/projects/{project_id}/users")
+async def get_project_users(project_id: str, current_user: dict = Depends(get_current_user)):
+    project = await db.projects.find_one(
+        {'id': project_id, 'team_id': current_user['team_id']},
+        {'_id': 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    
+    # Get team members
+    team_members = await db.users.find(
+        {'team_id': current_user['team_id']},
+        {'_id': 0, 'password_hash': 0}
+    ).to_list(100)
+    
+    # Get unique guest commenters on this project's pins
+    pins = await db.pins.find({'project_id': project_id}, {'_id': 0, 'id': 1}).to_list(1000)
+    pin_ids = [p['id'] for p in pins]
+    
+    guest_comments = await db.comments.find(
+        {'pin_id': {'$in': pin_ids}, 'author_type': 'guest'},
+        {'_id': 0, 'author_name': 1, 'guest_email': 1}
+    ).to_list(1000)
+    
+    # Deduplicate guests by email
+    guests_map = {}
+    for gc in guest_comments:
+        email = gc.get('guest_email')
+        if email and email not in guests_map:
+            guests_map[email] = {
+                'id': f'guest_{email}',
+                'name': gc.get('author_name', 'Guest'),
+                'email': email,
+                'role': 'guest'
+            }
+    
+    # Combine team members and guests
+    all_users = team_members + list(guests_map.values())
+    return all_users
+
 # Comment Routes
 @api_router.post("/comments", response_model=Comment)
 async def create_comment(
