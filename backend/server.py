@@ -1283,15 +1283,6 @@ async def proxy_page(url: str = Query(..., description="URL to proxy"), project_
     except Exception as e:
         logger.error(f"Proxy error: {e}")
         raise HTTPException(status_code=502, detail=f"Failed to fetch URL: {str(e)}")
-                headers={'X-Proxied-URL': target_url}
-            )
-    
-    except httpx.RequestError as e:
-        logger.error(f"Proxy request failed: {e}")
-        raise HTTPException(status_code=502, detail=f"Failed to fetch URL: {str(e)}")
-    except Exception as e:
-        logger.error(f"Proxy error: {e}")
-        raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
 
 @api_router.post("/proxy")
 async def proxy_page_post(
