@@ -508,6 +508,44 @@ async def delete_project(project_id: str, current_user: dict = Depends(get_curre
     
     return {'message': 'Project deleted successfully'}
 
+@api_router.post("/projects/{project_id}/refresh-thumbnail")
+async def refresh_project_thumbnail(
+    project_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+):
+    """Refresh/regenerate thumbnail for a project"""
+    project = await db.projects.find_one(
+        {'id': project_id, 'team_id': current_user['team_id']},
+        {'_id': 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    
+    if project['type'] != 'url' or not project.get('content_url'):
+        raise HTTPException(status_code=400, detail='Thumbnail generation only available for URL projects')
+    
+    # Delete old thumbnail if exists
+    if project.get('thumbnail_path'):
+        old_thumbnail = UPLOAD_DIR / project['thumbnail_path'].replace('uploads/', '')
+        if old_thumbnail.exists():
+            try:
+                old_thumbnail.unlink()
+            except Exception:
+                pass
+    
+    # Generate new thumbnail
+    thumbnail_path = await generate_project_thumbnail(project['content_url'])
+    
+    if thumbnail_path:
+        await db.projects.update_one(
+            {'id': project_id},
+            {'$set': {'thumbnail_path': thumbnail_path}}
+        )
+        return {'thumbnail_path': thumbnail_path, 'success': True}
+    
+    raise HTTPException(status_code=500, detail='Failed to generate thumbnail')
+
 # Pin Routes
 @api_router.post("/pins", response_model=Pin)
 async def create_pin(pin_data: PinCreate, current_user: dict = Depends(get_current_user)):
