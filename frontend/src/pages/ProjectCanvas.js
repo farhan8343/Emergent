@@ -73,6 +73,7 @@ export default function ProjectCanvas() {
   // UI state
   const [selectedFile, setSelectedFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hoveredPin, setHoveredPin] = useState(null);
   
   // Mention state
   const [showMentions, setShowMentions] = useState(false);
