@@ -1350,6 +1350,7 @@ async def proxy_page_post(
         base_url = get_base_url(target_url)
         
         # For POST requests, we'll forward as GET for now (form handling is complex)
+        http_client = await get_http_client()
         response = await http_client.get(target_url)
         
         content_type = response.headers.get('content-type', '').lower()
