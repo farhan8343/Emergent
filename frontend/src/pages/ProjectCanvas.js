@@ -961,21 +961,110 @@ export default function ProjectCanvas() {
                     />
                     {visiblePins.map((pin) => {
                       const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
+                      const pinComments = allComments[pin.id] || [];
+                      const latestComment = pinComments[pinComments.length - 1];
+                      const isHovered = hoveredPin?.id === pin.id;
+                      
                       return (
                         <div
                           key={pin.id}
-                          className={`pin-marker absolute w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer z-10 transition-transform hover:scale-110 ${
-                            pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
-                          } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30 scale-110' : ''}`}
+                          className="absolute z-10"
                           style={{
                             left: `${pin.x}%`,
                             top: `${pin.y}%`,
                             transform: 'translate(-50%, -50%)'
                           }}
-                          onClick={(e) => handlePinClick(pin, e)}
-                          data-testid={`pin-${pin.id}`}
+                          onMouseEnter={() => setHoveredPin(pin)}
+                          onMouseLeave={() => setHoveredPin(null)}
                         >
-                          {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
+                          {/* Pin Marker */}
+                          <div
+                            className={`pin-marker w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer transition-transform hover:scale-110 ${
+                              pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
+                            } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30 scale-110' : ''}`}
+                            onClick={(e) => handlePinClick(pin, e)}
+                            data-testid={`pin-${pin.id}`}
+                          >
+                            {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
+                          </div>
+                          
+                          {/* Hover Preview Box */}
+                          {isHovered && (
+                            <div 
+                              className="absolute left-10 top-0 w-64 bg-white rounded-lg shadow-xl border border-border/50 p-3 z-50"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center space-x-2">
+                                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                                    pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
+                                  }`}>
+                                    {pin.status === 'resolved' ? <Check className="w-3 h-3" /> : pinNumber}
+                                  </div>
+                                  <span className="font-medium text-sm">Pin #{pinNumber}</span>
+                                </div>
+                                <Badge variant={pin.status === 'resolved' ? 'secondary' : 'default'} className="text-xs">
+                                  {pin.status}
+                                </Badge>
+                              </div>
+                              
+                              {latestComment ? (
+                                <div className="mb-3">
+                                  <p className="text-xs text-muted-foreground mb-1">
+                                    <span className="font-medium">{latestComment.author_name}</span>
+                                  </p>
+                                  <p className="text-sm text-foreground line-clamp-3">
+                                    {latestComment.content?.replace(/@\[([^\]]+)\]\(user:[^)]+\)/g, '@$1')}
+                                  </p>
+                                  {pinComments.length > 1 && (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      +{pinComments.length - 1} more comment{pinComments.length > 2 ? 's' : ''}
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-muted-foreground italic mb-3">No comments yet</p>
+                              )}
+                              
+                              <div className="flex items-center space-x-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1 h-7 text-xs"
+                                  onClick={() => handlePinClick(pin)}
+                                >
+                                  View Thread
+                                </Button>
+                                {user && pin.status === 'open' && (
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    className="flex-1 h-7 text-xs bg-green-500 hover:bg-green-600"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleResolvePin(pin);
+                                    }}
+                                  >
+                                    <Check className="w-3 h-3 mr-1" />
+                                    Resolve
+                                  </Button>
+                                )}
+                                {user && pin.status === 'resolved' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="flex-1 h-7 text-xs"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleResolvePin(pin);
+                                    }}
+                                  >
+                                    Reopen
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
