@@ -359,7 +359,7 @@ export default function Dashboard() {
                     <img
                       src={`${BACKEND_URL}/api/files/screenshots/${project.thumbnail_path.split('/').pop()}`}
                       alt={project.name}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover object-top"
                       onError={(e) => {
                         e.target.style.display = 'none';
                         e.target.parentElement.querySelector('.fallback-icon').style.display = 'flex';
@@ -370,11 +370,32 @@ export default function Dashboard() {
                     <div className="text-center text-muted-foreground">
                       {getProjectIcon(project.type)}
                       <p className="text-xs mt-2">{project.type.toUpperCase()}</p>
+                      {project.type === 'url' && !project.thumbnail_path && (
+                        <p className="text-xs mt-1 text-accent">Generating thumbnail...</p>
+                      )}
                     </div>
                   </div>
                   
                   {/* Hover Actions */}
                   <div className="absolute top-2 right-2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* Refresh Thumbnail Button - only for URL projects */}
+                    {project.type === 'url' && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={(e) => handleRefreshThumbnail(project.id, e)}
+                        disabled={refreshingThumbnails[project.id]}
+                        className="h-8 w-8 p-0"
+                        title="Refresh thumbnail"
+                        data-testid={`refresh-thumbnail-${project.id}`}
+                      >
+                        {refreshingThumbnails[project.id] ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="w-4 h-4" />
+                        )}
+                      </Button>
+                    )}
                     <Button
                       variant="secondary"
                       size="sm"
