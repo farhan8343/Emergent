@@ -17,11 +17,22 @@ import { toast } from 'sonner';
 import { 
   ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, 
   Share2, Eye, MessageCircle, Search, ArrowUpDown, ChevronLeft, 
-  Paperclip, ExternalLink, Loader2, Plus, Globe, AtSign
+  Paperclip, ExternalLink, Loader2, Globe
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
+
+// Normalize URL for comparison (remove trailing slashes, query params for grouping)
+const normalizeUrl = (url) => {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
+  } catch {
+    return url;
+  }
+};
 
 export default function ProjectCanvas() {
   const { id } = useParams();
@@ -37,6 +48,7 @@ export default function ProjectCanvas() {
   // Iframe state
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [currentPageUrl, setCurrentPageUrl] = useState(null);
+  const [iframeScroll, setIframeScroll] = useState({ x: 0, y: 0 });
   
   // Comments and pins state
   const [pins, setPins] = useState([]);
@@ -46,9 +58,10 @@ export default function ProjectCanvas() {
   const [newComment, setNewComment] = useState('');
   
   // Guest state
-  const [guestName, setGuestName] = useState('');
-  const [guestEmail, setGuestEmail] = useState('');
+  const [guestName, setGuestName] = useState(() => localStorage.getItem('markuply_guest_name') || '');
+  const [guestEmail, setGuestEmail] = useState(() => localStorage.getItem('markuply_guest_email') || '');
   const [showGuestDialog, setShowGuestDialog] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
   
   // Filter and search state
   const [showResolved, setShowResolved] = useState(false);
@@ -71,71 +84,94 @@ export default function ProjectCanvas() {
   const iframeRef = useRef(null);
   const fileInputRef = useRef(null);
   const commentInputRef = useRef(null);
+  const scrollPollRef = useRef(null);
 
   // ==================== DATA FETCHING ====================
   
   const fetchProject = useCallback(async () => {
     try {
-      const response = await axios.get(`${API}/projects/${id}`, {
-        headers: getAuthHeaders()
-      });
+      const headers = user ? getAuthHeaders() : {};
+      // For guests, try to fetch with guest credentials
+      if (!user && guestEmail) {
+        headers['X-Guest-Email'] = guestEmail;
+      }
+      
+      const response = await axios.get(`${API}/projects/${id}`, { headers });
       setProject(response.data);
       setCurrentPageUrl(response.data.content_url);
     } catch (error) {
       console.error('Failed to fetch project:', error);
-      toast.error('Failed to load project');
-      navigate('/dashboard');
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        // Check if guest has access
+        if (!user) {
+          setShowGuestDialog(true);
+          setIsGuest(true);
+        } else {
+          toast.error('You do not have access to this project');
+          navigate('/dashboard');
+        }
+      } else {
+        toast.error('Failed to load project');
+        navigate('/dashboard');
+      }
     } finally {
       setLoading(false);
     }
-  }, [id, getAuthHeaders, navigate]);
+  }, [id, user, guestEmail, getAuthHeaders, navigate]);
 
   const fetchPins = useCallback(async () => {
     try {
-      const response = await axios.get(`${API}/pins/${id}`, { headers: getAuthHeaders() });
+      const headers = user ? getAuthHeaders() : {};
+      if (!user && guestEmail) {
+        headers['X-Guest-Email'] = guestEmail;
+      }
+      const response = await axios.get(`${API}/pins/${id}`, { headers });
       setPins(response.data);
     } catch (error) {
       console.error('Failed to fetch pins:', error);
     }
-  }, [id, getAuthHeaders]);
+  }, [id, user, guestEmail, getAuthHeaders]);
 
   const fetchComments = useCallback(async (pinId) => {
     try {
-      const response = await axios.get(`${API}/comments/${pinId}`, {
-        headers: getAuthHeaders()
-      });
+      const headers = user ? getAuthHeaders() : {};
+      if (!user && guestEmail) {
+        headers['X-Guest-Email'] = guestEmail;
+      }
+      const response = await axios.get(`${API}/comments/${pinId}`, { headers });
       setComments(response.data);
     } catch (error) {
       console.error('Failed to fetch comments:', error);
     }
-  }, [getAuthHeaders]);
+  }, [user, guestEmail, getAuthHeaders]);
 
   const fetchAllComments = useCallback(async () => {
     if (pins.length === 0) return;
     try {
+      const headers = user ? getAuthHeaders() : {};
+      if (!user && guestEmail) {
+        headers['X-Guest-Email'] = guestEmail;
+      }
       const commentsMap = {};
       for (const pin of pins) {
-        const response = await axios.get(`${API}/comments/${pin.id}`, {
-          headers: getAuthHeaders()
-        });
+        const response = await axios.get(`${API}/comments/${pin.id}`, { headers });
         commentsMap[pin.id] = response.data;
       }
       setAllComments(commentsMap);
     } catch (error) {
       console.error('Failed to fetch all comments:', error);
     }
-  }, [pins, getAuthHeaders]);
+  }, [pins, user, guestEmail, getAuthHeaders]);
 
   const fetchProjectUsers = useCallback(async () => {
     try {
-      const response = await axios.get(`${API}/projects/${id}/users`, {
-        headers: getAuthHeaders()
-      });
+      const headers = user ? getAuthHeaders() : {};
+      const response = await axios.get(`${API}/projects/${id}/users`, { headers });
       setProjectUsers(response.data || []);
     } catch (error) {
       setProjectUsers([]);
     }
-  }, [id, getAuthHeaders]);
+  }, [id, user, getAuthHeaders]);
 
   // ==================== EFFECTS ====================
 
@@ -165,30 +201,48 @@ export default function ProjectCanvas() {
     }
   }, [selectedPin?.id, fetchComments]);
 
-  // Listen for messages from proxied iframe
+  // Listen for messages from proxied iframe (page loads and scroll updates)
   useEffect(() => {
     const handleMessage = (event) => {
       if (event.data?.type === 'MARKUPLY_PAGE_LOADED') {
         setIframeLoaded(true);
-        // Update current page URL from iframe
         if (event.data.url) {
-          // Extract the actual URL from the proxy URL
-          const proxyUrl = event.data.url;
-          const match = proxyUrl.match(/[?&]url=([^&]+)/);
-          if (match) {
-            try {
-              setCurrentPageUrl(decodeURIComponent(match[1]));
-            } catch (e) {
-              console.error('Failed to decode URL:', e);
-            }
-          }
+          // Extract the actual URL from the message
+          setCurrentPageUrl(event.data.actualUrl || event.data.url);
         }
+      } else if (event.data?.type === 'MARKUPLY_SCROLL') {
+        setIframeScroll({ x: event.data.scrollX, y: event.data.scrollY });
       }
     };
     
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, []);
+
+  // Poll iframe scroll position (fallback for cross-origin)
+  useEffect(() => {
+    if (iframeLoaded && iframeRef.current) {
+      // Try to get scroll position periodically
+      scrollPollRef.current = setInterval(() => {
+        try {
+          const iframe = iframeRef.current;
+          if (iframe?.contentWindow) {
+            const scrollX = iframe.contentWindow.scrollX || iframe.contentWindow.pageXOffset || 0;
+            const scrollY = iframe.contentWindow.scrollY || iframe.contentWindow.pageYOffset || 0;
+            setIframeScroll({ x: scrollX, y: scrollY });
+          }
+        } catch (e) {
+          // Cross-origin - can't access, rely on postMessage
+        }
+      }, 100);
+      
+      return () => {
+        if (scrollPollRef.current) {
+          clearInterval(scrollPollRef.current);
+        }
+      };
+    }
+  }, [iframeLoaded]);
 
   // ==================== PROXY URL ====================
 
@@ -198,13 +252,63 @@ export default function ProjectCanvas() {
     return `${API}/proxy?url=${encodedUrl}&project_id=${id}`;
   }, [id]);
 
+  // ==================== PIN POSITIONING ====================
+  
+  // Calculate pin position based on document coordinates and current scroll
+  const getPinStyle = useCallback((pin) => {
+    // Pin stores: x, y as percentage of viewport at time of creation
+    // scroll_x, scroll_y as absolute scroll position at time of creation
+    
+    // For pins created with scroll tracking, adjust position based on current scroll
+    const pinScrollX = pin.scroll_x || 0;
+    const pinScrollY = pin.scroll_y || 0;
+    
+    // Calculate offset from scroll difference
+    const scrollDiffX = iframeScroll.x - pinScrollX;
+    const scrollDiffY = iframeScroll.y - pinScrollY;
+    
+    // Get canvas dimensions
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return {
+        left: `${pin.x}%`,
+        top: `${pin.y}%`,
+        transform: 'translate(-50%, -50%)'
+      };
+    }
+    
+    const canvasRect = canvas.getBoundingClientRect();
+    
+    // Convert percentage to pixels, then adjust for scroll
+    const pixelX = (pin.x / 100) * canvasRect.width;
+    const pixelY = (pin.y / 100) * canvasRect.height;
+    
+    // Adjust for scroll difference
+    const adjustedX = pixelX - scrollDiffX;
+    const adjustedY = pixelY - scrollDiffY;
+    
+    // Convert back to percentage
+    const finalX = (adjustedX / canvasRect.width) * 100;
+    const finalY = (adjustedY / canvasRect.height) * 100;
+    
+    return {
+      left: `${finalX}%`,
+      top: `${finalY}%`,
+      transform: 'translate(-50%, -50%)',
+      // Hide pins that are scrolled out of view
+      display: (finalX < -5 || finalX > 105 || finalY < -5 || finalY > 105) ? 'none' : 'flex'
+    };
+  }, [iframeScroll]);
+
   // ==================== PIN & COMMENT HANDLERS ====================
 
   const handleCanvasClick = useCallback(async (e) => {
-    if (mode !== 'comment' || !canvasRef.current || !user) {
-      if (mode === 'comment' && !user) {
-        setShowGuestDialog(true);
-      }
+    // Only intercept clicks in comment mode, not scrolls
+    if (mode !== 'comment') return;
+    
+    // Guests can only comment on existing pins, not create new ones
+    if (!user) {
+      toast.error('Please log in to create new pins. Guests can only reply to existing comments.');
       return;
     }
 
@@ -215,19 +319,7 @@ export default function ProjectCanvas() {
 
     const canvasRect = canvasRef.current.getBoundingClientRect();
     
-    // Get scroll position from iframe if possible
-    let scrollX = 0;
-    let scrollY = 0;
-    try {
-      if (iframeRef.current?.contentWindow) {
-        scrollX = iframeRef.current.contentWindow.scrollX || 0;
-        scrollY = iframeRef.current.contentWindow.scrollY || 0;
-      }
-    } catch (e) {
-      // Cross-origin, can't access scroll
-    }
-    
-    // Calculate position as percentage of canvas
+    // Calculate position as percentage of canvas viewport
     const x = ((e.clientX - canvasRect.left) / canvasRect.width) * 100;
     const y = ((e.clientY - canvasRect.top) / canvasRect.height) * 100;
 
@@ -242,9 +334,9 @@ export default function ProjectCanvas() {
           project_id: id, 
           x, 
           y,
-          page_url: currentPageUrl || project?.content_url,
-          scroll_x: scrollX,
-          scroll_y: scrollY
+          page_url: normalizeUrl(currentPageUrl || project?.content_url),
+          scroll_x: iframeScroll.x,
+          scroll_y: iframeScroll.y
         },
         { headers: getAuthHeaders() }
       );
@@ -256,7 +348,7 @@ export default function ProjectCanvas() {
       console.error('Failed to create pin:', error);
       toast.error(error.response?.data?.detail || 'Failed to create pin');
     }
-  }, [mode, user, id, currentPageUrl, project, getAuthHeaders]);
+  }, [mode, user, id, currentPageUrl, project, iframeScroll, getAuthHeaders]);
 
   const handleSubmitComment = useCallback(async () => {
     if (!newComment.trim() && !selectedFile) {
@@ -265,7 +357,7 @@ export default function ProjectCanvas() {
     }
 
     if (!selectedPin) {
-      toast.error('Please select or create a pin first');
+      toast.error('Please select a pin first');
       return;
     }
 
@@ -277,7 +369,7 @@ export default function ProjectCanvas() {
 
     setIsSubmitting(true);
     
-    // Optimistic UI update - show comment immediately
+    // Optimistic UI update
     const optimisticComment = {
       id: `temp_${Date.now()}`,
       content: newComment,
@@ -294,14 +386,16 @@ export default function ProjectCanvas() {
       [selectedPin.id]: [...(prev[selectedPin.id] || []), optimisticComment]
     }));
 
-    // Clear input immediately for responsiveness
+    // Clear input immediately
     const commentText = newComment;
     const file = selectedFile;
     setNewComment('');
     setSelectedFile(null);
 
     try {
+      const headers = user ? getAuthHeaders() : {};
       let response;
+      
       if (file) {
         const formData = new FormData();
         formData.append('pin_id', selectedPin.id);
@@ -315,7 +409,7 @@ export default function ProjectCanvas() {
         response = await axios.post(
           `${API}/comments/with-attachment`,
           formData,
-          { headers: { ...getAuthHeaders(), 'Content-Type': 'multipart/form-data' } }
+          { headers: { ...headers, 'Content-Type': 'multipart/form-data' } }
         );
       } else {
         response = await axios.post(
@@ -326,7 +420,7 @@ export default function ProjectCanvas() {
             guest_name: !user ? guestName : undefined,
             guest_email: !user ? guestEmail : undefined
           },
-          { headers: getAuthHeaders() }
+          { headers }
         );
       }
 
@@ -341,6 +435,12 @@ export default function ProjectCanvas() {
           c.id === optimisticComment.id ? realComment : c
         )
       }));
+
+      // Save guest info for future use
+      if (!user) {
+        localStorage.setItem('markuply_guest_name', guestName);
+        localStorage.setItem('markuply_guest_email', guestEmail);
+      }
 
       toast.success('Comment added!');
       
@@ -403,7 +503,7 @@ export default function ProjectCanvas() {
       const textAfterAt = value.slice(lastAtIndex + 1);
       const spaceIndex = textAfterAt.indexOf(' ');
       
-      if (spaceIndex === -1) {
+      if (spaceIndex === -1 && textAfterAt.length < 20) {
         setMentionSearch(textAfterAt.toLowerCase());
         setShowMentions(true);
       } else {
@@ -416,7 +516,8 @@ export default function ProjectCanvas() {
 
   const handleMentionSelect = useCallback((mentionUser) => {
     const lastAtIndex = newComment.lastIndexOf('@');
-    const newText = newComment.slice(0, lastAtIndex) + `@${mentionUser.name} `;
+    const beforeAt = newComment.slice(0, lastAtIndex);
+    const newText = `${beforeAt}@[${mentionUser.name}](user:${mentionUser.id || mentionUser.email}) `;
     setNewComment(newText);
     setShowMentions(false);
     commentInputRef.current?.focus();
@@ -429,6 +530,13 @@ export default function ProjectCanvas() {
                    u.email?.toLowerCase().includes(mentionSearch))
       .slice(0, 5);
   }, [projectUsers, mentionSearch]);
+
+  // Parse mentions in comment text for display
+  const renderCommentText = useCallback((text) => {
+    if (!text) return '';
+    // Replace @[Name](user:id) with styled mention
+    return text.replace(/@\[([^\]]+)\]\(user:[^)]+\)/g, '<span class="text-accent font-medium">@$1</span>');
+  }, []);
 
   // ==================== FILE HANDLING ====================
 
@@ -450,6 +558,20 @@ export default function ProjectCanvas() {
     toast.success('Share link copied to clipboard');
   }, [id]);
 
+  const handleGuestContinue = useCallback(() => {
+    if (guestName.trim() && guestEmail.trim()) {
+      localStorage.setItem('markuply_guest_name', guestName);
+      localStorage.setItem('markuply_guest_email', guestEmail);
+      setShowGuestDialog(false);
+      if (isGuest) {
+        // Retry fetching project with guest credentials
+        fetchProject();
+      }
+    } else {
+      toast.error('Please fill in both fields');
+    }
+  }, [guestName, guestEmail, isGuest, fetchProject]);
+
   // ==================== COMPUTED VALUES ====================
 
   const visiblePins = useMemo(() => {
@@ -457,10 +579,11 @@ export default function ProjectCanvas() {
     
     // Filter by page URL if selected
     if (selectedPageUrl) {
-      filtered = filtered.filter(pin => 
-        pin.page_url === selectedPageUrl || 
-        (!pin.page_url && selectedPageUrl === project?.content_url)
-      );
+      filtered = filtered.filter(pin => {
+        const pinUrl = normalizeUrl(pin.page_url);
+        const filterUrl = normalizeUrl(selectedPageUrl);
+        return pinUrl === filterUrl || (!pin.page_url && filterUrl === normalizeUrl(project?.content_url));
+      });
     }
     
     // Filter by resolved status
@@ -496,12 +619,22 @@ export default function ProjectCanvas() {
   }), [pins]);
 
   const pageUrls = useMemo(() => {
-    const urls = new Set();
+    const urls = new Map();
     pins.forEach(p => {
-      if (p.page_url) urls.add(p.page_url);
+      if (p.page_url) {
+        const normalized = normalizeUrl(p.page_url);
+        if (!urls.has(normalized)) {
+          urls.set(normalized, p.page_url);
+        }
+      }
     });
-    if (project?.content_url) urls.add(project.content_url);
-    return Array.from(urls);
+    if (project?.content_url) {
+      const normalized = normalizeUrl(project.content_url);
+      if (!urls.has(normalized)) {
+        urls.set(normalized, project.content_url);
+      }
+    }
+    return Array.from(urls.values());
   }, [pins, project]);
 
   const getViewportWidth = useCallback(() => {
@@ -511,6 +644,14 @@ export default function ProjectCanvas() {
       default: return '100%';
     }
   }, [viewportSize]);
+
+  const getUrlPath = useCallback((url) => {
+    try {
+      return new URL(url).pathname || '/';
+    } catch {
+      return url;
+    }
+  }, []);
 
   // ==================== RENDER ====================
 
@@ -525,7 +666,10 @@ export default function ProjectCanvas() {
   if (!project) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <p className="text-muted-foreground">Project not found</p>
+        <div className="text-center">
+          <p className="text-muted-foreground mb-4">Project not found or access denied</p>
+          <Button onClick={() => navigate('/dashboard')}>Go to Dashboard</Button>
+        </div>
       </div>
     );
   }
@@ -547,8 +691,9 @@ export default function ProjectCanvas() {
                 </Button>
                 <div className="min-w-0">
                   <h1 className="text-lg font-semibold truncate" data-testid="project-name">{project.name}</h1>
-                  <p className="text-sm text-muted-foreground truncate max-w-md">
-                    {currentPageUrl || project.content_url}
+                  <p className="text-sm text-muted-foreground truncate max-w-md flex items-center">
+                    <Globe className="w-3 h-3 mr-1 flex-shrink-0" />
+                    {getUrlPath(currentPageUrl || project.content_url)}
                   </p>
                 </div>
               </div>
@@ -613,7 +758,7 @@ export default function ProjectCanvas() {
             </div>
           </div>
 
-          {/* Canvas Area - Scrollable in both modes */}
+          {/* Canvas Area - Scrollable in BOTH modes */}
           <div className="flex-1 overflow-auto bg-secondary/30 p-4">
             <div 
               className="mx-auto bg-white rounded-xl shadow-lg overflow-hidden"
@@ -625,9 +770,7 @@ export default function ProjectCanvas() {
               <div
                 ref={canvasRef}
                 className="relative"
-                onClick={handleCanvasClick}
                 style={{ 
-                  cursor: mode === 'comment' && user ? 'crosshair' : 'default',
                   minHeight: project.type === 'url' ? '800px' : 'auto'
                 }}
               >
@@ -645,7 +788,7 @@ export default function ProjectCanvas() {
                       </div>
                     )}
                     
-                    {/* Iframe with proxy - allows scrolling in both modes */}
+                    {/* Iframe - ALWAYS scrollable, no pointer-events blocking */}
                     <iframe
                       ref={iframeRef}
                       src={getProxyUrl(project.content_url)}
@@ -653,38 +796,49 @@ export default function ProjectCanvas() {
                       className="w-full border-0"
                       style={{ 
                         height: '800px',
-                        pointerEvents: mode === 'comment' ? 'none' : 'auto'
+                        // Allow scrolling and interaction in both modes
+                        // Comment mode uses overlay for clicks only
                       }}
                       onLoad={() => setIframeLoaded(true)}
                       data-testid="project-iframe"
                     />
                     
-                    {/* Transparent overlay for pin placement in comment mode - allows scroll through */}
+                    {/* Click capture overlay for Comment mode - allows scroll passthrough */}
                     {mode === 'comment' && (
                       <div 
                         className="absolute inset-0 z-20"
                         style={{ 
                           background: 'transparent',
-                          cursor: user ? 'crosshair' : 'default',
-                          pointerEvents: 'auto'
+                          cursor: user ? 'crosshair' : 'not-allowed',
+                          // Allow scroll events to pass through
+                          touchAction: 'pan-x pan-y'
+                        }}
+                        onClick={handleCanvasClick}
+                        onWheel={(e) => {
+                          // Forward wheel events to iframe
+                          if (iframeRef.current?.contentWindow) {
+                            try {
+                              iframeRef.current.contentWindow.scrollBy(e.deltaX, e.deltaY);
+                            } catch (err) {
+                              // Cross-origin - let event bubble
+                            }
+                          }
                         }}
                       />
                     )}
                     
-                    {/* Pins overlay - positioned relative to viewport percentage */}
+                    {/* Pins overlay - positioned based on scroll */}
                     {visiblePins.map((pin) => {
                       const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
+                      const pinStyle = getPinStyle(pin);
+                      
                       return (
                         <div
                           key={pin.id}
-                          className={`pin-marker absolute w-8 h-8 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white font-bold text-xs cursor-pointer z-30 transition-transform hover:scale-110 ${
+                          className={`pin-marker absolute w-8 h-8 rounded-full border-2 border-white shadow-lg items-center justify-center text-white font-bold text-xs cursor-pointer z-30 transition-all hover:scale-110 ${
                             pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
                           } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30 scale-110' : ''}`}
-                          style={{
-                            left: `${pin.x}%`,
-                            top: `${pin.y}%`,
-                            transform: 'translate(-50%, -50%)'
-                          }}
+                          style={pinStyle}
                           onClick={(e) => handlePinClick(pin, e)}
                           data-testid={`pin-${pin.id}`}
                         >
@@ -697,7 +851,7 @@ export default function ProjectCanvas() {
 
                 {/* Image-based project */}
                 {project.type === 'image' && project.file_path && (
-                  <div className="relative">
+                  <div className="relative" onClick={handleCanvasClick} style={{ cursor: mode === 'comment' && user ? 'crosshair' : 'default' }}>
                     <img
                       src={`${BACKEND_URL}/api/files/projects/${project.file_path.split('/').pop()}`}
                       alt={project.name}
@@ -742,7 +896,7 @@ export default function ProjectCanvas() {
           </div>
         </div>
 
-        {/* Sidebar - ALWAYS VISIBLE regardless of mode */}
+        {/* Sidebar - ALWAYS VISIBLE */}
         <div className="w-96 border-l bg-card flex flex-col flex-shrink-0" data-testid="comments-sidebar">
           {/* Sidebar Header */}
           <div className="p-4 border-b flex-shrink-0">
@@ -760,27 +914,25 @@ export default function ProjectCanvas() {
               )}
             </div>
 
-            {/* Page URL Filter */}
+            {/* Page URL Filter - Group comments by page */}
             {pageUrls.length > 1 && sidebarView === 'overview' && (
               <div className="mb-4">
+                <label className="text-xs text-muted-foreground mb-1 block">Filter by page</label>
                 <Select value={selectedPageUrl || 'all'} onValueChange={(v) => setSelectedPageUrl(v === 'all' ? null : v)}>
                   <SelectTrigger className="w-full text-xs">
                     <Globe className="w-3 h-3 mr-2" />
                     <SelectValue placeholder="All pages" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All pages</SelectItem>
-                    {pageUrls.map((url) => (
-                      <SelectItem key={url} value={url} className="text-xs">
-                        {(() => {
-                          try {
-                            return new URL(url).pathname || '/';
-                          } catch {
-                            return url;
-                          }
-                        })()}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="all">All pages ({pins.length} pins)</SelectItem>
+                    {pageUrls.map((url) => {
+                      const count = pins.filter(p => normalizeUrl(p.page_url) === normalizeUrl(url)).length;
+                      return (
+                        <SelectItem key={url} value={url} className="text-xs">
+                          {getUrlPath(url)} ({count} pins)
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -865,7 +1017,7 @@ export default function ProjectCanvas() {
                             </div>
                             {latestComment ? (
                               <p className="text-sm text-muted-foreground truncate">
-                                {latestComment.content}
+                                {latestComment.content?.replace(/@\[([^\]]+)\]\(user:[^)]+\)/g, '@$1')}
                               </p>
                             ) : (
                               <p className="text-sm text-muted-foreground italic">No comments yet</p>
@@ -873,13 +1025,7 @@ export default function ProjectCanvas() {
                             {pin.page_url && pin.page_url !== project.content_url && (
                               <p className="text-xs text-muted-foreground mt-1 truncate flex items-center">
                                 <Globe className="w-3 h-3 mr-1 flex-shrink-0" />
-                                {(() => {
-                                  try {
-                                    return new URL(pin.page_url).pathname;
-                                  } catch {
-                                    return pin.page_url;
-                                  }
-                                })()}
+                                {getUrlPath(pin.page_url)}
                               </p>
                             )}
                             <p className="text-xs text-muted-foreground mt-1">
@@ -896,7 +1042,7 @@ export default function ProjectCanvas() {
                     <p className="text-muted-foreground">No comments yet</p>
                     <p className="text-sm text-muted-foreground mt-2">
                       {mode === 'comment' 
-                        ? 'Click on the website to add a pin'
+                        ? user ? 'Click on the website to add a pin' : 'Select an existing pin to comment'
                         : 'Switch to Comment mode to add pins'}
                     </p>
                   </div>
@@ -961,7 +1107,10 @@ export default function ProjectCanvas() {
                                 <Loader2 className="w-3 h-3 animate-spin" />
                               )}
                             </div>
-                            <p className="text-sm whitespace-pre-wrap">{comment.content}</p>
+                            <p 
+                              className="text-sm whitespace-pre-wrap"
+                              dangerouslySetInnerHTML={{ __html: renderCommentText(comment.content) }}
+                            />
                             {comment.attachment_path && (
                               <div className="mt-2">
                                 <a 
@@ -973,16 +1122,6 @@ export default function ProjectCanvas() {
                                   <Paperclip className="w-3 h-3 mr-1" />
                                   View attachment
                                 </a>
-                              </div>
-                            )}
-                            {comment.screenshot_path && (
-                              <div className="mt-2">
-                                <img 
-                                  src={`${BACKEND_URL}/api/files/screenshots/${comment.screenshot_path.split('/').pop()}`}
-                                  alt="Screenshot"
-                                  className="w-full rounded border cursor-pointer hover:opacity-90"
-                                  onClick={() => window.open(`${BACKEND_URL}/api/files/screenshots/${comment.screenshot_path.split('/').pop()}`, '_blank')}
-                                />
                               </div>
                             )}
                           </div>
@@ -999,11 +1138,17 @@ export default function ProjectCanvas() {
             </div>
           </ScrollArea>
 
-          {/* Comment Input - Always visible at bottom */}
+          {/* Comment Input - Always visible */}
           <div className="p-4 border-t bg-card flex-shrink-0">
             {!selectedPin && mode === 'comment' && (
               <p className="text-xs text-muted-foreground mb-2 text-center">
-                Click on the website to create a pin, then add your comment
+                {user ? 'Click on the website to create a pin' : 'Select an existing pin to add your comment'}
+              </p>
+            )}
+            {!user && (
+              <p className="text-xs text-accent mb-2 text-center">
+                Commenting as guest: {guestName || 'Not set'} 
+                <button onClick={() => setShowGuestDialog(true)} className="underline ml-1">Change</button>
               </p>
             )}
             <div className="relative">
@@ -1024,7 +1169,7 @@ export default function ProjectCanvas() {
               {/* Mentions Dropdown */}
               {showMentions && filteredMentionUsers.length > 0 && (
                 <div className="absolute bottom-full left-0 w-full mb-1 bg-popover border rounded-md shadow-lg z-50 max-h-48 overflow-auto">
-                  {filteredMentionUsers.map((mentionUser, index) => (
+                  {filteredMentionUsers.map((mentionUser) => (
                     <div
                       key={mentionUser.id || mentionUser.email}
                       className="p-2 cursor-pointer hover:bg-secondary"
@@ -1094,14 +1239,16 @@ export default function ProjectCanvas() {
       <Dialog open={showGuestDialog} onOpenChange={setShowGuestDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Guest Comment</DialogTitle>
+            <DialogTitle>Guest Access</DialogTitle>
             <DialogDescription>
-              Please provide your name and email to add a comment as a guest.
+              {isGuest 
+                ? 'Please provide your name and email to view this project and add comments.'
+                : 'Please provide your name and email to add a comment as a guest.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <label className="text-sm font-medium">Name</label>
+              <label className="text-sm font-medium">Name *</label>
               <Input
                 value={guestName}
                 onChange={(e) => setGuestName(e.target.value)}
@@ -1110,7 +1257,7 @@ export default function ProjectCanvas() {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Email</label>
+              <label className="text-sm font-medium">Email *</label>
               <Input
                 type="email"
                 value={guestEmail}
@@ -1119,19 +1266,19 @@ export default function ProjectCanvas() {
                 data-testid="guest-email-input"
               />
             </div>
+            <p className="text-xs text-muted-foreground">
+              Note: As a guest, you can view and comment on existing pins but cannot create new pins.
+            </p>
           </div>
           <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={() => setShowGuestDialog(false)}>
+            <Button variant="outline" onClick={() => {
+              setShowGuestDialog(false);
+              if (isGuest) navigate('/');
+            }}>
               Cancel
             </Button>
             <Button 
-              onClick={() => {
-                if (guestName.trim() && guestEmail.trim()) {
-                  setShowGuestDialog(false);
-                } else {
-                  toast.error('Please fill in both fields');
-                }
-              }}
+              onClick={handleGuestContinue}
               data-testid="guest-continue-btn"
             >
               Continue
