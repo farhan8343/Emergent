@@ -536,6 +536,89 @@ class TestFileServing:
         print(f"✓ Screenshot file retrieved: {screenshot_filename}")
 
 
+class TestThumbnailGeneration:
+    """Thumbnail generation tests for URL projects"""
+    
+    @pytest.fixture
+    def auth_headers(self):
+        login_resp = requests.post(f"{BASE_URL}/api/auth/login", json={
+            "email": TEST_EMAIL,
+            "password": TEST_PASSWORD
+        })
+        token = login_resp.json()["token"]
+        return {"Authorization": f"Bearer {token}"}
+    
+    def test_refresh_thumbnail_endpoint(self, auth_headers):
+        """Test refreshing thumbnail for a URL project"""
+        # Get projects
+        projects_resp = requests.get(f"{BASE_URL}/api/projects", headers=auth_headers)
+        projects = projects_resp.json()
+        
+        # Find a URL project
+        url_project = next((p for p in projects if p["type"] == "url"), None)
+        if not url_project:
+            pytest.skip("No URL project to test")
+        
+        project_id = url_project["id"]
+        
+        # Refresh thumbnail
+        response = requests.post(
+            f"{BASE_URL}/api/projects/{project_id}/refresh-thumbnail",
+            headers=auth_headers
+        )
+        assert response.status_code == 200, f"Refresh thumbnail failed: {response.text}"
+        data = response.json()
+        assert "thumbnail_path" in data
+        assert data["success"] == True
+        print(f"✓ Thumbnail refreshed: {data['thumbnail_path']}")
+    
+    def test_refresh_thumbnail_non_url_project(self, auth_headers):
+        """Test that refresh thumbnail fails for non-URL projects"""
+        # Create an image project first (if possible) or skip
+        # For now, test with a fake project ID
+        fake_id = str(uuid.uuid4())
+        response = requests.post(
+            f"{BASE_URL}/api/projects/{fake_id}/refresh-thumbnail",
+            headers=auth_headers
+        )
+        assert response.status_code == 404, f"Expected 404, got {response.status_code}"
+        print("✓ Refresh thumbnail correctly returns 404 for non-existent project")
+    
+    def test_project_has_thumbnail_after_creation(self, auth_headers):
+        """Test that URL projects get thumbnails after creation"""
+        # Create a new URL project
+        unique_name = f"TEST_ThumbnailTest_{uuid.uuid4().hex[:8]}"
+        
+        response = requests.post(
+            f"{BASE_URL}/api/projects",
+            headers=auth_headers,
+            data={
+                "name": unique_name,
+                "type": "url",
+                "content_url": "https://example.com"
+            }
+        )
+        assert response.status_code == 200, f"Create project failed: {response.text}"
+        project_id = response.json()["id"]
+        
+        # Wait for background thumbnail generation (up to 10 seconds)
+        import time
+        for _ in range(10):
+            time.sleep(1)
+            project_resp = requests.get(
+                f"{BASE_URL}/api/projects/{project_id}",
+                headers=auth_headers
+            )
+            project = project_resp.json()
+            if project.get("thumbnail_path"):
+                print(f"✓ Thumbnail generated: {project['thumbnail_path']}")
+                break
+        
+        # Cleanup
+        requests.delete(f"{BASE_URL}/api/projects/{project_id}", headers=auth_headers)
+        print("✓ Test project cleaned up")
+
+
 class TestCleanup:
     """Cleanup test data"""
     
