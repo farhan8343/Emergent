@@ -459,21 +459,31 @@ export default function ProjectCanvas() {
     }
   }, [newComment, selectedFile, selectedPin, user, guestName, guestEmail, getAuthHeaders]);
 
-  const handleResolvePin = useCallback(async () => {
-    if (!selectedPin || !user) return;
+  const handleResolvePin = useCallback(async (pinToResolve = null) => {
+    const targetPin = pinToResolve || selectedPin;
+    if (!targetPin || !user) return;
 
     try {
-      const newStatus = selectedPin.status === 'open' ? 'resolved' : 'open';
+      const newStatus = targetPin.status === 'open' ? 'resolved' : 'open';
       await axios.put(
-        `${API}/pins/${selectedPin.id}/status?new_status=${newStatus}`,
+        `${API}/pins/${targetPin.id}/status?new_status=${newStatus}`,
         {},
         { headers: getAuthHeaders() }
       );
       
       setPins(prev => prev.map(p => 
-        p.id === selectedPin.id ? { ...p, status: newStatus } : p
+        p.id === targetPin.id ? { ...p, status: newStatus } : p
       ));
-      setSelectedPin(prev => ({ ...prev, status: newStatus }));
+      
+      if (selectedPin?.id === targetPin.id) {
+        setSelectedPin(prev => ({ ...prev, status: newStatus }));
+      }
+      
+      // Close hover preview if resolved from hover
+      if (pinToResolve) {
+        setHoveredPin(null);
+      }
+      
       toast.success(`Pin ${newStatus}`);
     } catch (error) {
       console.error('Failed to update pin status:', error);
