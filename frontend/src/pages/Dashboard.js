@@ -28,6 +28,7 @@ export default function Dashboard() {
   const [creating, setCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
+  const [refreshingThumbnails, setRefreshingThumbnails] = useState({});
   const { getAuthHeaders } = useAuth();
   const navigate = useNavigate();
 
