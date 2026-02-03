@@ -1240,7 +1240,6 @@ def rewrite_html(html_content: str, base_url: str, project_id: str = None) -> st
     return str(soup)
 
 # Simple HTTP client for non-HTML assets
-import httpx
 _http_client = None
 
 async def get_http_client():
