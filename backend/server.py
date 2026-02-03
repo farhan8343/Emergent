@@ -441,9 +441,6 @@ async def create_project(
                 {'$inc': {'storage_used_mb': file_size_mb}}
             )
     
-    # Don't generate screenshot during project creation - do it on-demand
-    # Thumbnail will be generated when screenshot is captured
-    
     project = {
         'id': project_id,
         'name': name,
@@ -458,7 +455,24 @@ async def create_project(
     }
     await db.projects.insert_one(project)
     
+    # Schedule background thumbnail generation for URL projects
+    if type == 'url' and content_url:
+        background_tasks.add_task(generate_and_save_thumbnail, project_id, content_url)
+    
     return Project(**project)
+
+async def generate_and_save_thumbnail(project_id: str, url: str):
+    """Background task to generate and save thumbnail for a project"""
+    try:
+        thumbnail_path = await generate_project_thumbnail(url)
+        if thumbnail_path:
+            await db.projects.update_one(
+                {'id': project_id},
+                {'$set': {'thumbnail_path': thumbnail_path}}
+            )
+            logger.info(f"Generated thumbnail for project {project_id}")
+    except Exception as e:
+        logger.error(f"Failed to generate thumbnail for project {project_id}: {e}")
 
 @api_router.get("/projects", response_model=List[Project])
 async def get_projects(current_user: dict = Depends(get_current_user)):
