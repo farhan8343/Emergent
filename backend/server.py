@@ -806,6 +806,55 @@ async def generate_pin_screenshot(pin_id: str, url: str, scroll_y: float, team_i
     except Exception as e:
         logger.error(f"Failed to generate pin screenshot: {e}")
 
+class GuestPinCreate(BaseModel):
+    project_id: str
+    x: float
+    y: float
+    page_url: Optional[str] = None
+    scroll_x: Optional[float] = 0
+    scroll_y: Optional[float] = 0
+    guest_name: str
+    guest_email: str
+
+@api_router.post("/pins/guest", response_model=Pin)
+async def create_guest_pin(
+    background_tasks: BackgroundTasks,
+    pin_data: GuestPinCreate
+):
+    """Create a pin as a guest user"""
+    project = await db.projects.find_one({'id': pin_data.project_id}, {'_id': 0})
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    
+    pin_id = str(uuid.uuid4())
+    
+    pin = {
+        'id': pin_id,
+        'project_id': pin_data.project_id,
+        'x': pin_data.x,
+        'y': pin_data.y,
+        'page_url': pin_data.page_url or project.get('content_url'),
+        'scroll_x': pin_data.scroll_x or 0,
+        'scroll_y': pin_data.scroll_y or 0,
+        'status': 'open',
+        'screenshot_path': None,
+        'created_by': f"guest:{pin_data.guest_email}",
+        'created_at': datetime.now(timezone.utc).isoformat()
+    }
+    await db.pins.insert_one(pin)
+    
+    # Generate screenshot in background
+    if project.get('content_url'):
+        background_tasks.add_task(
+            generate_pin_screenshot, 
+            pin_id, 
+            pin_data.page_url or project.get('content_url'),
+            pin_data.scroll_y or 0,
+            project.get('team_id')
+        )
+    
+    return Pin(**pin)
+
 @api_router.get("/pins/{project_id}", response_model=List[Pin])
 async def get_pins(
     project_id: str, 
