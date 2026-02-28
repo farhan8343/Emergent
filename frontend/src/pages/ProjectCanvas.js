@@ -1438,11 +1438,9 @@ export default function ProjectCanvas() {
       <Dialog open={showGuestDialog} onOpenChange={setShowGuestDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Guest Access</DialogTitle>
+            <DialogTitle>Join the conversation</DialogTitle>
             <DialogDescription>
-              {isGuest 
-                ? 'Please provide your name and email to view this project and add comments.'
-                : 'Please provide your name and email to add a comment as a guest.'}
+              Please provide your name and email to view this project and add comments.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -1466,13 +1464,12 @@ export default function ProjectCanvas() {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              Note: As a guest, you can view and comment on existing pins but cannot create new pins.
+              Your info will be saved for future visits. You can add pins and comments on this project.
             </p>
           </div>
           <div className="flex justify-end space-x-2">
             <Button variant="outline" onClick={() => {
               setShowGuestDialog(false);
-              if (isGuest) navigate('/');
             }}>
               Cancel
             </Button>
