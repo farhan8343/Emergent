@@ -19,7 +19,6 @@ import {
   Share2, Eye, MessageCircle, Search, ArrowUpDown, ChevronLeft, 
   Paperclip, ExternalLink, Loader2, Globe, Camera
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
