@@ -256,49 +256,33 @@ export default function ProjectCanvas() {
 
   // ==================== PIN POSITIONING ====================
   
-  // Calculate pin position based on document coordinates and current scroll
+  // Use CSS transforms for smooth pin positioning (reduces lag)
   const getPinStyle = useCallback((pin) => {
     // Pin stores: x, y as percentage of viewport at time of creation
     // scroll_x, scroll_y as absolute scroll position at time of creation
     
-    // For pins created with scroll tracking, adjust position based on current scroll
     const pinScrollX = pin.scroll_x || 0;
     const pinScrollY = pin.scroll_y || 0;
     
-    // Calculate offset from scroll difference
+    // Calculate scroll offset
     const scrollDiffX = iframeScroll.x - pinScrollX;
     const scrollDiffY = iframeScroll.y - pinScrollY;
     
-    // Get canvas dimensions
-    const canvas = canvasRef.current;
-    if (!canvas) {
-      return {
-        left: `${pin.x}%`,
-        top: `${pin.y}%`,
-        transform: 'translate(-50%, -50%)'
-      };
-    }
-    
-    const canvasRect = canvas.getBoundingClientRect();
-    
-    // Convert percentage to pixels, then adjust for scroll
-    const pixelX = (pin.x / 100) * canvasRect.width;
-    const pixelY = (pin.y / 100) * canvasRect.height;
-    
-    // Adjust for scroll difference
-    const adjustedX = pixelX - scrollDiffX;
-    const adjustedY = pixelY - scrollDiffY;
-    
-    // Convert back to percentage
-    const finalX = (adjustedX / canvasRect.width) * 100;
-    const finalY = (adjustedY / canvasRect.height) * 100;
+    // Use transform for smoother animation (GPU accelerated)
+    // Position is set in percentage, scroll adjustment via transform
+    const isOutOfView = 
+      (pin.x - (scrollDiffX / 10)) < -5 || 
+      (pin.x - (scrollDiffX / 10)) > 105 || 
+      (pin.y - (scrollDiffY / 10)) < -5 || 
+      (pin.y - (scrollDiffY / 10)) > 105;
     
     return {
-      left: `${finalX}%`,
-      top: `${finalY}%`,
-      transform: 'translate(-50%, -50%)',
-      // Hide pins that are scrolled out of view
-      display: (finalX < -5 || finalX > 105 || finalY < -5 || finalY > 105) ? 'none' : 'flex'
+      left: `${pin.x}%`,
+      top: `${pin.y}%`,
+      transform: `translate(-50%, -50%) translate(${-scrollDiffX}px, ${-scrollDiffY}px)`,
+      willChange: 'transform', // Hint browser for optimization
+      transition: 'none', // No transition for immediate response
+      display: isOutOfView ? 'none' : 'flex'
     };
   }, [iframeScroll]);
 
