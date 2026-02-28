@@ -561,6 +561,44 @@ async def get_project(project_id: str, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail='Project not found')
     return Project(**project)
 
+@api_router.get("/projects/{project_id}/public")
+async def get_project_public(project_id: str):
+    """Get project details for public/guest access - no authentication required"""
+    project = await db.projects.find_one(
+        {'id': project_id},
+        {'_id': 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    return Project(**project)
+
+@api_router.get("/projects/{project_id}/pins/public")
+async def get_project_pins_public(project_id: str, page_url: str = None):
+    """Get pins for public/guest access - no authentication required"""
+    project = await db.projects.find_one({'id': project_id}, {'_id': 0})
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    
+    query = {'project_id': project_id}
+    if page_url:
+        query['page_url'] = page_url
+    
+    pins = await db.pins.find(query, {'_id': 0}).to_list(1000)
+    return [Pin(**p) for p in pins]
+
+@api_router.get("/projects/{project_id}/comments/public")
+async def get_project_comments_public(project_id: str):
+    """Get all comments for a project - public access"""
+    project = await db.projects.find_one({'id': project_id}, {'_id': 0})
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    
+    pins = await db.pins.find({'project_id': project_id}, {'_id': 0, 'id': 1}).to_list(1000)
+    pin_ids = [p['id'] for p in pins]
+    
+    comments = await db.comments.find({'pin_id': {'$in': pin_ids}}, {'_id': 0}).to_list(10000)
+    return comments
+
 @api_router.delete("/projects/{project_id}")
 async def delete_project(project_id: str, current_user: dict = Depends(get_current_user)):
     project = await db.projects.find_one({'id': project_id, 'team_id': current_user['team_id']}, {'_id': 0})
