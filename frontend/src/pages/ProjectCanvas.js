@@ -313,20 +313,36 @@ export default function ProjectCanvas() {
     }
 
     try {
-      // Use the endpoint with screenshot - backend will generate screenshot
-      const formData = new FormData();
-      formData.append('project_id', id);
-      formData.append('x', x.toString());
-      formData.append('y', y.toString());
-      formData.append('page_url', normalizeUrl(currentPageUrl || project?.content_url));
-      formData.append('scroll_x', iframeScroll.x.toString());
-      formData.append('scroll_y', iframeScroll.y.toString());
+      let response;
       
-      const response = await axios.post(
-        `${API}/pins/with-screenshot`,
-        formData,
-        { headers: { ...getAuthHeaders(), 'Content-Type': 'multipart/form-data' } }
-      );
+      if (user) {
+        // Authenticated user - use the endpoint with screenshot
+        const formData = new FormData();
+        formData.append('project_id', id);
+        formData.append('x', x.toString());
+        formData.append('y', y.toString());
+        formData.append('page_url', normalizeUrl(currentPageUrl || project?.content_url));
+        formData.append('scroll_x', iframeScroll.x.toString());
+        formData.append('scroll_y', iframeScroll.y.toString());
+        
+        response = await axios.post(
+          `${API}/pins/with-screenshot`,
+          formData,
+          { headers: { ...getAuthHeaders(), 'Content-Type': 'multipart/form-data' } }
+        );
+      } else {
+        // Guest user - use guest endpoint
+        response = await axios.post(`${API}/pins/guest`, {
+          project_id: id,
+          x,
+          y,
+          page_url: normalizeUrl(currentPageUrl || project?.content_url),
+          scroll_x: iframeScroll.x,
+          scroll_y: iframeScroll.y,
+          guest_name: guestName,
+          guest_email: guestEmail
+        });
+      }
       
       const newPin = response.data;
       setPins(prevPins => [...prevPins, newPin]);
@@ -336,7 +352,7 @@ export default function ProjectCanvas() {
       console.error('Failed to create pin:', error);
       toast.error(error.response?.data?.detail || 'Failed to create pin');
     }
-  }, [mode, user, guestName, id, currentPageUrl, project, iframeScroll, getAuthHeaders]);
+  }, [mode, user, guestName, guestEmail, id, currentPageUrl, project, iframeScroll, getAuthHeaders]);
 
   const handleSubmitComment = useCallback(async () => {
     if (!newComment.trim() && !selectedFile) {
