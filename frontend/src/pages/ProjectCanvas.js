@@ -892,10 +892,8 @@ export default function ProjectCanvas() {
                       return (
                         <div
                           key={pin.id}
-                          className="absolute z-30"
+                          className="absolute z-30 group/pin"
                           style={pinStyle}
-                          onMouseEnter={() => setHoveredPin(pin)}
-                          onMouseLeave={() => setHoveredPin(null)}
                         >
                           {/* Pin Marker */}
                           <div
@@ -903,16 +901,24 @@ export default function ProjectCanvas() {
                               pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
                             } ${selectedPin?.id === pin.id ? 'ring-4 ring-accent/30 scale-110' : ''}`}
                             onClick={(e) => handlePinClick(pin, e)}
+                            onMouseEnter={() => setHoveredPin(pin)}
                             data-testid={`pin-${pin.id}`}
                           >
                             {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
                           </div>
                           
-                          {/* Hover Preview Box */}
+                          {/* Hover Preview Box - positioned to the LEFT with no gap */}
                           {isHovered && (
                             <div 
-                              className="absolute left-10 top-0 w-64 bg-white rounded-lg shadow-xl border border-border/50 p-3 z-50"
+                              className="absolute w-64 bg-white rounded-lg shadow-xl border border-border/50 p-3 z-50"
+                              style={{
+                                right: 'calc(100% + 8px)', // Position to the LEFT of the pin
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                              }}
                               onClick={(e) => e.stopPropagation()}
+                              onMouseEnter={() => setHoveredPin(pin)}
+                              onMouseLeave={() => setHoveredPin(null)}
                               data-testid={`pin-hover-preview-${pin.id}`}
                             >
                               <div className="flex items-center justify-between mb-2">
