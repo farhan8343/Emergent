@@ -710,7 +710,7 @@ export default function ProjectCanvas() {
             {sidebarView === 'overview' && (
               <>
                 {/* Page URL Filter */}
-                {uniquePageUrls.length > 1 && (
+                {pageUrls.length > 1 && (
                   <div className="mb-3">
                     <Select value={selectedPageUrl || 'all'} onValueChange={(val) => setSelectedPageUrl(val === 'all' ? null : val)}>
                       <SelectTrigger className="h-8 text-xs">
@@ -718,7 +718,7 @@ export default function ProjectCanvas() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Pages</SelectItem>
-                        {uniquePageUrls.map((url) => (
+                        {pageUrls.map((url) => (
                           <SelectItem key={url} value={url}>
                             {getUrlPath(url)}
                           </SelectItem>
