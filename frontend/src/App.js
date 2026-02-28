@@ -18,6 +18,7 @@ function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/auth" element={<AuthPage />} />
+            <Route path="/login" element={<AuthPage />} />
             <Route
               path="/dashboard"
               element={
@@ -26,14 +27,8 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/project/:id"
-              element={
-                <ProtectedRoute>
-                  <ProjectCanvas />
-                </ProtectedRoute>
-              }
-            />
+            {/* Project route is PUBLIC - allows guest access via share links */}
+            <Route path="/project/:id" element={<ProjectCanvas />} />
             <Route
               path="/admin"
               element={
