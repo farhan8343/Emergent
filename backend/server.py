@@ -163,6 +163,7 @@ class Pin(BaseModel):
     scroll_x: Optional[float] = 0
     scroll_y: Optional[float] = 0
     status: str
+    screenshot_path: Optional[str] = None
     created_by: str
     created_at: str
 
