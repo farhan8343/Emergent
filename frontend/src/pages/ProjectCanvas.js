@@ -694,7 +694,311 @@ export default function ProjectCanvas() {
       
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar - LEFT SIDE - ALWAYS VISIBLE */}
-        <div className="w-96 border-r bg-card flex flex-col flex-shrink-0" data-testid="comments-sidebar">
+        <div className="w-96 border-r bg-card flex flex-col flex-shrink-0 order-first" data-testid="comments-sidebar">
+          {/* Sidebar Header */}
+          <div className="p-4 border-b flex-shrink-0">
+            <div className="flex items-center justify-between mb-4">
+              {sidebarView === 'thread' && selectedPin ? (
+                <Button variant="ghost" size="sm" onClick={handleBackToOverview}>
+                  <ChevronLeft className="w-4 h-4 mr-1" />
+                  All Comments
+                </Button>
+              ) : (
+                <h3 className="font-semibold flex items-center">
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Comments
+                </h3>
+              )}
+            </div>
+
+            {sidebarView === 'overview' && (
+              <>
+                {/* Page URL Filter */}
+                {uniquePageUrls.length > 1 && (
+                  <div className="mb-3">
+                    <Select value={selectedPageUrl || 'all'} onValueChange={(val) => setSelectedPageUrl(val === 'all' ? null : val)}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Filter by page" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Pages</SelectItem>
+                        {uniquePageUrls.map((url) => (
+                          <SelectItem key={url} value={url}>
+                            {getUrlPath(url)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search comments..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                    data-testid="search-comments"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between mt-3">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="show-resolved"
+                      checked={showResolved}
+                      onCheckedChange={setShowResolved}
+                    />
+                    <label htmlFor="show-resolved" className="text-sm text-muted-foreground">
+                      Show resolved
+                    </label>
+                  </div>
+
+                  <Select value={sortOrder} onValueChange={setSortOrder}>
+                    <SelectTrigger className="w-28 h-8 text-xs">
+                      <ArrowUpDown className="w-3 h-3 mr-1" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">Newest</SelectItem>
+                      <SelectItem value="oldest">Oldest</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <p className="text-xs text-muted-foreground mt-3">
+                  {pinCounts.open} pending, {pinCounts.resolved} resolved
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* Comments List */}
+          <ScrollArea className="flex-1">
+            <div className="p-4 space-y-3">
+              {sidebarView === 'overview' ? (
+                visiblePins.length > 0 ? (
+                  visiblePins.map((pin) => {
+                    const pinComments = allComments[pin.id] || [];
+                    const latestComment = pinComments[pinComments.length - 1];
+                    const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
+                    
+                    return (
+                      <Card
+                        key={pin.id}
+                        className={`p-3 cursor-pointer hover:bg-secondary/50 transition-colors ${
+                          selectedPin?.id === pin.id ? 'ring-2 ring-accent' : ''
+                        }`}
+                        onClick={() => handlePinClick(pin)}
+                        data-testid={`pin-card-${pin.id}`}
+                      >
+                        <div className="flex items-start space-x-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0 ${
+                            pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
+                          }`}>
+                            {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-medium text-sm">Pin #{pinNumber}</span>
+                              <Badge variant={pin.status === 'resolved' ? 'secondary' : 'default'} className="text-xs">
+                                {pin.status}
+                              </Badge>
+                            </div>
+                            {latestComment ? (
+                              <p className="text-sm text-muted-foreground truncate">
+                                {latestComment.content?.replace(/@\[([^\]]+)\]\(user:[^)]+\)/g, '@$1')}
+                              </p>
+                            ) : (
+                              <p className="text-sm text-muted-foreground italic">No comments yet</p>
+                            )}
+                            {pin.page_url && pin.page_url !== project.content_url && (
+                              <p className="text-xs text-muted-foreground mt-1 truncate">
+                                {getUrlPath(pin.page_url)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">No comments yet</p>
+                    <p className="text-xs mt-1">Switch to Comment mode and click to add pins</p>
+                  </div>
+                )
+              ) : (
+                // Thread View
+                <div className="space-y-4">
+                  {selectedPin && (
+                    <>
+                      <div className="flex items-center space-x-3 pb-3 border-b">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
+                          selectedPin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
+                        }`}>
+                          {selectedPin.status === 'resolved' ? <Check className="w-5 h-5" /> : pins.findIndex(p => p.id === selectedPin.id) + 1}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">Pin #{pins.findIndex(p => p.id === selectedPin.id) + 1}</span>
+                            <Badge variant={selectedPin.status === 'resolved' ? 'secondary' : 'default'}>
+                              {selectedPin.status}
+                            </Badge>
+                          </div>
+                          {selectedPin.page_url && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              {getUrlPath(selectedPin.page_url)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Pin Screenshot */}
+                      {selectedPin.screenshot_path && (
+                        <div className="mb-3">
+                          <img 
+                            src={`${BACKEND_URL}/api/files/screenshots/${selectedPin.screenshot_path.split('/').pop()}`}
+                            alt="Pin screenshot"
+                            className="w-full rounded-lg border"
+                          />
+                        </div>
+                      )}
+
+                      {/* Resolve Button */}
+                      {user && (
+                        <Button
+                          variant={selectedPin.status === 'resolved' ? 'outline' : 'default'}
+                          size="sm"
+                          className="w-full"
+                          onClick={() => handleResolvePin()}
+                        >
+                          <Check className="w-4 h-4 mr-2" />
+                          {selectedPin.status === 'resolved' ? 'Reopen' : 'Mark as Resolved'}
+                        </Button>
+                      )}
+
+                      {/* Comments */}
+                      <div className="space-y-3 mt-4">
+                        {comments.length > 0 ? (
+                          comments.map((comment) => (
+                            <div key={comment.id} className="bg-secondary/30 rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="font-medium text-sm">{comment.author_name}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {new Date(comment.created_at).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <p className="text-sm whitespace-pre-wrap">
+                                {comment.content?.replace(/@\[([^\]]+)\]\(user:[^)]+\)/g, (match, name) => `@${name}`)}
+                              </p>
+                              {comment.attachment_path && (
+                                <a 
+                                  href={`${BACKEND_URL}/api/files/attachments/${comment.attachment_path.split('/').pop()}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-accent hover:underline mt-2 inline-flex items-center"
+                                >
+                                  <Paperclip className="w-3 h-3 mr-1" />
+                                  Attachment
+                                </a>
+                              )}
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-center text-sm text-muted-foreground py-4">
+                            No comments yet. Be the first!
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+
+          {/* Comment Input */}
+          <div className="p-4 border-t flex-shrink-0">
+            <div className="space-y-3">
+              {/* Mention Dropdown */}
+              {showMentions && (
+                <div className="bg-popover border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                  {projectUsers
+                    .filter(u => u.name.toLowerCase().includes(mentionSearch.toLowerCase()))
+                    .map(user => (
+                      <button
+                        key={user.id}
+                        className="w-full px-3 py-2 text-left hover:bg-secondary/50 text-sm"
+                        onClick={() => {
+                          const mention = `@[${user.name}](user:${user.id})`;
+                          const beforeMention = newComment.substring(0, newComment.lastIndexOf('@'));
+                          setNewComment(beforeMention + mention + ' ');
+                          setShowMentions(false);
+                          commentInputRef.current?.focus();
+                        }}
+                      >
+                        {user.name}
+                      </button>
+                    ))}
+                </div>
+              )}
+
+              <Textarea
+                ref={commentInputRef}
+                placeholder={selectedPin ? "Add a comment... (use @ to mention)" : "Select a pin to comment"}
+                value={newComment}
+                onChange={handleCommentChange}
+                disabled={!selectedPin}
+                className="min-h-[80px] resize-none"
+                data-testid="comment-input"
+              />
+
+              {/* File Attachment */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                    accept="image/*,.pdf"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!selectedPin}
+                  >
+                    <Paperclip className="w-4 h-4" />
+                  </Button>
+                  {selectedFile && (
+                    <span className="text-xs text-muted-foreground truncate max-w-[150px]">
+                      {selectedFile.name}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <Button
+                className="w-full"
+                onClick={handleAddComment}
+                disabled={!selectedPin || isSubmitting || (!newComment.trim() && !selectedFile)}
+                data-testid="submit-comment-btn"
+              >
+                {isSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : null}
+                Add Comment
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col min-w-0">
           {/* Header */}
           <div className="border-b bg-card p-4 flex-shrink-0">
             <div className="flex items-center justify-between">
