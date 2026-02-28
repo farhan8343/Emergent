@@ -221,26 +221,38 @@ export default function ProjectCanvas() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  // Poll iframe scroll position (fallback for cross-origin)
+  // Poll iframe scroll position using requestAnimationFrame for smooth updates
   useEffect(() => {
     if (iframeLoaded && iframeRef.current) {
-      // Try to get scroll position periodically
-      scrollPollRef.current = setInterval(() => {
+      let animationFrameId;
+      let lastScrollX = 0;
+      let lastScrollY = 0;
+      
+      const pollScroll = () => {
         try {
           const iframe = iframeRef.current;
           if (iframe?.contentWindow) {
             const scrollX = iframe.contentWindow.scrollX || iframe.contentWindow.pageXOffset || 0;
             const scrollY = iframe.contentWindow.scrollY || iframe.contentWindow.pageYOffset || 0;
-            setIframeScroll({ x: scrollX, y: scrollY });
+            
+            // Only update state if scroll position changed
+            if (scrollX !== lastScrollX || scrollY !== lastScrollY) {
+              lastScrollX = scrollX;
+              lastScrollY = scrollY;
+              setIframeScroll({ x: scrollX, y: scrollY });
+            }
           }
         } catch (e) {
           // Cross-origin - can't access, rely on postMessage
         }
-      }, 100);
+        animationFrameId = requestAnimationFrame(pollScroll);
+      };
+      
+      animationFrameId = requestAnimationFrame(pollScroll);
       
       return () => {
-        if (scrollPollRef.current) {
-          clearInterval(scrollPollRef.current);
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
         }
       };
     }
