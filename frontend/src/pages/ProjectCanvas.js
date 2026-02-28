@@ -92,42 +92,39 @@ export default function ProjectCanvas() {
   
   const fetchProject = useCallback(async () => {
     try {
-      const headers = user ? getAuthHeaders() : {};
-      // For guests, try to fetch with guest credentials
-      if (!user && guestEmail) {
-        headers['X-Guest-Email'] = guestEmail;
+      let response;
+      if (user) {
+        // Authenticated user
+        response = await axios.get(`${API}/projects/${id}`, { headers: getAuthHeaders() });
+      } else {
+        // Guest/public access - use public endpoint
+        response = await axios.get(`${API}/projects/${id}/public`);
+        setIsGuest(true);
       }
-      
-      const response = await axios.get(`${API}/projects/${id}`, { headers });
       setProject(response.data);
       setCurrentPageUrl(response.data.content_url);
     } catch (error) {
       console.error('Failed to fetch project:', error);
-      if (error.response?.status === 401 || error.response?.status === 403) {
-        // Check if guest has access
-        if (!user) {
-          setShowGuestDialog(true);
-          setIsGuest(true);
-        } else {
-          toast.error('You do not have access to this project');
-          navigate('/dashboard');
-        }
+      if (error.response?.status === 404) {
+        toast.error('Project not found');
+        navigate('/');
       } else {
         toast.error('Failed to load project');
-        navigate('/dashboard');
       }
     } finally {
       setLoading(false);
     }
-  }, [id, user, guestEmail, getAuthHeaders, navigate]);
+  }, [id, user, getAuthHeaders, navigate]);
 
   const fetchPins = useCallback(async () => {
     try {
-      const headers = user ? getAuthHeaders() : {};
-      if (!user && guestEmail) {
-        headers['X-Guest-Email'] = guestEmail;
+      let response;
+      if (user) {
+        response = await axios.get(`${API}/pins/${id}`, { headers: getAuthHeaders() });
+      } else {
+        // Guest/public access
+        response = await axios.get(`${API}/projects/${id}/pins/public`);
       }
-      const response = await axios.get(`${API}/pins/${id}`, { headers });
       setPins(response.data);
     } catch (error) {
       console.error('Failed to fetch pins:', error);
