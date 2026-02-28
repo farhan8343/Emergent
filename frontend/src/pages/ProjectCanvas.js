@@ -856,19 +856,26 @@ export default function ProjectCanvas() {
                         className="absolute inset-0 z-20"
                         style={{ 
                           background: 'transparent',
-                          cursor: user ? 'crosshair' : 'not-allowed',
-                          // Allow scroll events to pass through
-                          touchAction: 'pan-x pan-y'
+                          cursor: user ? 'crosshair' : 'default',
+                          // Allow scroll and touch events to pass through
+                          pointerEvents: 'none'
+                        }}
+                      />
+                    )}
+                    
+                    {/* Clickable layer for adding pins - only captures clicks, not scroll */}
+                    {mode === 'comment' && (
+                      <div 
+                        className="absolute inset-0 z-19"
+                        style={{ 
+                          background: 'transparent',
+                          cursor: user ? 'crosshair' : 'default',
                         }}
                         onClick={handleCanvasClick}
-                        onWheel={(e) => {
-                          // Forward wheel events to iframe
-                          if (iframeRef.current?.contentWindow) {
-                            try {
-                              iframeRef.current.contentWindow.scrollBy(e.deltaX, e.deltaY);
-                            } catch (err) {
-                              // Cross-origin - let event bubble
-                            }
+                        onMouseDown={(e) => {
+                          // Allow iframe to handle scroll
+                          if (e.target === e.currentTarget) {
+                            e.stopPropagation();
                           }
                         }}
                       />
