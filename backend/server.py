@@ -655,7 +655,11 @@ async def refresh_project_thumbnail(
 
 # Pin Routes
 @api_router.post("/pins", response_model=Pin)
-async def create_pin(pin_data: PinCreate, current_user: dict = Depends(get_current_user)):
+async def create_pin(
+    pin_data: PinCreate, 
+    background_tasks: BackgroundTasks,
+    current_user: dict = Depends(get_current_user)
+):
     project = await db.projects.find_one(
         {'id': pin_data.project_id, 'team_id': current_user['team_id']},
         {'_id': 0}
@@ -663,8 +667,9 @@ async def create_pin(pin_data: PinCreate, current_user: dict = Depends(get_curre
     if not project:
         raise HTTPException(status_code=404, detail='Project not found')
     
+    pin_id = str(uuid.uuid4())
     pin = {
-        'id': str(uuid.uuid4()),
+        'id': pin_id,
         'project_id': pin_data.project_id,
         'x': pin_data.x,
         'y': pin_data.y,
@@ -677,6 +682,16 @@ async def create_pin(pin_data: PinCreate, current_user: dict = Depends(get_curre
         'created_at': datetime.now(timezone.utc).isoformat()
     }
     await db.pins.insert_one(pin)
+    
+    # Generate screenshot in background (non-blocking)
+    if project.get('content_url'):
+        background_tasks.add_task(
+            generate_pin_screenshot,
+            pin_id,
+            pin_data.page_url or project.get('content_url'),
+            pin_data.scroll_y or 0,
+            current_user['team_id']
+        )
     
     return Pin(**pin)
 
