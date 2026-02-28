@@ -4,11 +4,10 @@
 Build a SaaS web application called "Markuply" for visual markup and review. Users (Owners, Team Members, and Guests) should be able to leave pin-based comments on live website URLs, PDFs, and images.
 
 ## Tech Stack
-- **Frontend**: React, Tailwind CSS, Shadcn UI
-- **Backend**: FastAPI, Python
+- **Frontend**: React, Tailwind CSS, Shadcn UI, html2canvas
+- **Backend**: FastAPI, Python, Playwright (reverse proxy)
 - **Database**: MongoDB (Motor async driver)
 - **Authentication**: JWT-based
-- **Reverse Proxy**: Playwright + BeautifulSoup (HTML rewriting, Cloudflare bypass)
 
 ## What's Been Implemented
 
@@ -20,58 +19,59 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 5. **Page URL grouping** - Comments organized by URL with filter dropdown
 6. **User mentions** - @ symbol triggers user suggestions
 7. **Guest comments** - Name/email dialog for non-authenticated users
+8. **Pin Hover Preview** - Floating box with comment preview and Resolve button
 
-### NEW Features (Feb 3, 2026) ✅
-1. **Pin Hover Preview Box**
-   - Hovering over a pin shows a floating preview box
-   - Displays comment text, author name, and comment count
-   - Contains "View Thread" and "Resolve" buttons
-   - Clicking "Resolve" marks the pin as resolved directly from the preview
-   
-2. **Auto-generated Website Thumbnails**
-   - URL projects automatically capture hero section screenshots
-   - Background task generates thumbnails after project creation
-   - Dashboard displays thumbnails instead of placeholder icons
-   - Refresh button available on hover to regenerate thumbnail
-   - Thumbnails stored persistently in uploads/screenshots/
+### Bug Fixes (Feb 28, 2026) ✅
+1. **Playwright Browser Path Error**
+   - Added auto-symlink creation on backend startup
+   - Dynamically detects installed browser versions
+   - No longer requires manual symlink creation
+
+2. **Pin Scroll Lag Fixed**
+   - Changed from interval-based to requestAnimationFrame polling
+   - Uses CSS transforms for GPU-accelerated positioning
+   - Only updates state when scroll position changes
+
+3. **Screenshot on Pin Creation**
+   - New endpoint: POST /api/pins/with-screenshot
+   - Captures visible viewport using html2canvas
+   - Stores screenshot alongside pin for context
+
+4. **Auto-generated Website Thumbnails**
+   - Background task generates thumbnails on project creation
+   - Dashboard displays real website screenshots
+   - Refresh button available to regenerate
 
 ### API Endpoints
 - GET/POST /api/proxy?url=<encoded_url> - Reverse proxy with Playwright
-- POST /api/pins - Create pin with page_url, scroll_x, scroll_y
+- POST /api/pins - Create pin (basic)
+- POST /api/pins/with-screenshot - Create pin with viewport screenshot
 - PUT /api/pins/{pin_id}/status - Update pin status (open/resolved)
-- GET /api/pins/{project_id}?page_url=<url> - Filter pins by page
+- POST /api/projects/{id}/refresh-thumbnail - Regenerate thumbnail
 - GET /api/projects/{id}/pages - Get unique page URLs
-- GET /api/projects/{id}/users - Get team + guest commenters
-- POST /api/projects/{id}/refresh-thumbnail - Regenerate thumbnail on demand
-
-## Test Credentials
-- **User**: testuser_1770157573@example.com / password123
-- **Super Admin**: admin@markuply.com / admin123
 
 ## Project Structure
 ```
 /app/
 ├── backend/
-│   ├── server.py        # All API routes + Playwright proxy
+│   ├── server.py        # All routes + Playwright proxy + auto-symlink
 │   ├── .env             # MongoDB connection, JWT secret
 │   └── uploads/         # Screenshots and thumbnails
 └── frontend/
     └── src/
         ├── pages/
-        │   ├── ProjectCanvas.js  # Pin hover preview implementation
-        │   ├── Dashboard.js      # Thumbnail display + refresh
-        │   └── ...
+        │   ├── ProjectCanvas.js  # Pin hover, screenshot capture
+        │   └── Dashboard.js      # Thumbnail display
         └── context/
             └── AuthContext.js    # localStorage key: 'token'
 ```
 
 ## Pending/Future Tasks
-1. **P1**: Shareable links for projects to enable guest workflow
-2. **P1**: Email notifications for comment replies and mentions
+1. **P1**: Shareable links for guest workflow
+2. **P1**: Email notifications for replies/mentions
 3. **P2**: Stripe subscription integration
-4. **P2**: Plan-based limits enforcement (team members, storage)
+4. **P2**: Plan-based limits enforcement
 5. **P3**: Advanced annotation tools (arrows, text boxes)
-6. **P3**: Refactor server.py into separate route files
 
 ## Known Limitations
 1. Complex SPAs may have JavaScript issues through proxy
