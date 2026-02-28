@@ -129,48 +129,39 @@ export default function ProjectCanvas() {
     } catch (error) {
       console.error('Failed to fetch pins:', error);
     }
-  }, [id, user, guestEmail, getAuthHeaders]);
+  }, [id, user, getAuthHeaders]);
 
   const fetchComments = useCallback(async (pinId) => {
     try {
-      const headers = user ? getAuthHeaders() : {};
-      if (!user && guestEmail) {
-        headers['X-Guest-Email'] = guestEmail;
-      }
-      const response = await axios.get(`${API}/comments/${pinId}`, { headers });
+      const response = await axios.get(`${API}/comments/${pinId}`);
       setComments(response.data);
     } catch (error) {
       console.error('Failed to fetch comments:', error);
     }
-  }, [user, guestEmail, getAuthHeaders]);
+  }, []);
 
   const fetchAllComments = useCallback(async () => {
     if (pins.length === 0) return;
     try {
-      const headers = user ? getAuthHeaders() : {};
-      if (!user && guestEmail) {
-        headers['X-Guest-Email'] = guestEmail;
-      }
       const commentsMap = {};
       for (const pin of pins) {
-        const response = await axios.get(`${API}/comments/${pin.id}`, { headers });
+        const response = await axios.get(`${API}/comments/${pin.id}`);
         commentsMap[pin.id] = response.data;
       }
       setAllComments(commentsMap);
     } catch (error) {
       console.error('Failed to fetch all comments:', error);
     }
-  }, [pins, user, guestEmail, getAuthHeaders]);
+  }, [pins]);
 
   const fetchProjectUsers = useCallback(async () => {
     try {
-      const headers = user ? getAuthHeaders() : {};
-      const response = await axios.get(`${API}/projects/${id}/users`, { headers });
+      const response = await axios.get(`${API}/projects/${id}/users`);
       setProjectUsers(response.data || []);
     } catch (error) {
       setProjectUsers([]);
     }
-  }, [id, user, getAuthHeaders]);
+  }, [id]);
 
   // ==================== EFFECTS ====================
 
