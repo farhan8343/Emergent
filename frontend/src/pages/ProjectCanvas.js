@@ -316,20 +316,15 @@ export default function ProjectCanvas() {
       let response;
       
       if (user) {
-        // Authenticated user - use the endpoint with screenshot
-        const formData = new FormData();
-        formData.append('project_id', id);
-        formData.append('x', x.toString());
-        formData.append('y', y.toString());
-        formData.append('page_url', normalizeUrl(currentPageUrl || project?.content_url));
-        formData.append('scroll_x', iframeScroll.x.toString());
-        formData.append('scroll_y', iframeScroll.y.toString());
-        
-        response = await axios.post(
-          `${API}/pins/with-screenshot`,
-          formData,
-          { headers: { ...getAuthHeaders(), 'Content-Type': 'multipart/form-data' } }
-        );
+        // Authenticated user - simple JSON request, screenshot captured in background
+        response = await axios.post(`${API}/pins`, {
+          project_id: id,
+          x,
+          y,
+          page_url: normalizeUrl(currentPageUrl || project?.content_url),
+          scroll_x: iframeScroll.x,
+          scroll_y: iframeScroll.y
+        }, { headers: getAuthHeaders() });
       } else {
         // Guest user - use guest endpoint
         response = await axios.post(`${API}/pins/guest`, {
@@ -347,7 +342,8 @@ export default function ProjectCanvas() {
       const newPin = response.data;
       setPins(prevPins => [...prevPins, newPin]);
       setSelectedPin(newPin);
-      toast.success('Pin created! Screenshot is being captured. Add a comment.');
+      setSidebarView('thread');
+      toast.success('Pin created! Add your comment.');
     } catch (error) {
       console.error('Failed to create pin:', error);
       toast.error(error.response?.data?.detail || 'Failed to create pin');
