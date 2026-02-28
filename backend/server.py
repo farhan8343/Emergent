@@ -682,6 +682,7 @@ async def create_pin(pin_data: PinCreate, current_user: dict = Depends(get_curre
 
 @api_router.post("/pins/with-screenshot", response_model=Pin)
 async def create_pin_with_screenshot(
+    background_tasks: BackgroundTasks,
     project_id: str = Form(...),
     x: float = Form(...),
     y: float = Form(...),
@@ -699,12 +700,13 @@ async def create_pin_with_screenshot(
     if not project:
         raise HTTPException(status_code=404, detail='Project not found')
     
+    pin_id = str(uuid.uuid4())
     screenshot_path = None
     
-    # Save screenshot if provided
+    # Save screenshot if provided from client
     if screenshot:
         try:
-            screenshot_filename = f"pin_{uuid.uuid4()}.png"
+            screenshot_filename = f"pin_{pin_id}.png"
             screenshot_full_path = UPLOAD_DIR / 'screenshots' / screenshot_filename
             
             async with aiofiles.open(screenshot_full_path, 'wb') as f:
@@ -723,7 +725,7 @@ async def create_pin_with_screenshot(
             logger.error(f"Failed to save pin screenshot: {e}")
     
     pin = {
-        'id': str(uuid.uuid4()),
+        'id': pin_id,
         'project_id': project_id,
         'x': x,
         'y': y,
@@ -737,7 +739,72 @@ async def create_pin_with_screenshot(
     }
     await db.pins.insert_one(pin)
     
+    # If no screenshot provided, generate one server-side in background
+    if not screenshot_path and project.get('content_url'):
+        background_tasks.add_task(
+            generate_pin_screenshot, 
+            pin_id, 
+            page_url or project.get('content_url'),
+            scroll_y or 0,
+            current_user['team_id']
+        )
+    
     return Pin(**pin)
+
+async def generate_pin_screenshot(pin_id: str, url: str, scroll_y: float, team_id: str):
+    """Background task to capture screenshot for a pin using Playwright"""
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=['--disable-blink-features=AutomationControlled', '--no-sandbox']
+            )
+            context = await browser.new_context(
+                viewport={'width': 1200, 'height': 800},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            )
+            page = await context.new_page()
+            
+            await page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', { get: () => false });
+            """)
+            
+            try:
+                await page.goto(url, wait_until='networkidle', timeout=30000)
+            except Exception:
+                await page.goto(url, wait_until='domcontentloaded', timeout=20000)
+                await page.wait_for_timeout(2000)
+            
+            # Scroll to the position where pin was created
+            if scroll_y > 0:
+                await page.evaluate(f'window.scrollTo(0, {scroll_y})')
+                await page.wait_for_timeout(500)
+            
+            screenshot_bytes = await page.screenshot()
+            await browser.close()
+            
+            screenshot_filename = f"pin_{pin_id}.png"
+            screenshot_path = UPLOAD_DIR / 'screenshots' / screenshot_filename
+            
+            async with aiofiles.open(screenshot_path, 'wb') as f:
+                await f.write(screenshot_bytes)
+            
+            # Update pin with screenshot path
+            await db.pins.update_one(
+                {'id': pin_id},
+                {'$set': {'screenshot_path': f"uploads/screenshots/{screenshot_filename}"}}
+            )
+            
+            # Update storage
+            file_size_mb = len(screenshot_bytes) / (1024 * 1024)
+            await db.teams.update_one(
+                {'id': team_id},
+                {'$inc': {'storage_used_mb': file_size_mb}}
+            )
+            
+            logger.info(f"Generated screenshot for pin {pin_id}")
+    except Exception as e:
+        logger.error(f"Failed to generate pin screenshot: {e}")
 
 @api_router.get("/pins/{project_id}", response_model=List[Pin])
 async def get_pins(
