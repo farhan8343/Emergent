@@ -304,6 +304,33 @@ export default function ProjectCanvas() {
 
   // ==================== PIN & COMMENT HANDLERS ====================
 
+  // Capture screenshot of the visible canvas area
+  const captureCanvasScreenshot = useCallback(async () => {
+    try {
+      if (!canvasRef.current) return null;
+      
+      // Capture the canvas area
+      const canvas = await html2canvas(canvasRef.current, {
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        scale: 0.5, // Reduce size for performance
+        width: canvasRef.current.offsetWidth,
+        height: canvasRef.current.offsetHeight,
+      });
+      
+      // Convert to blob
+      return new Promise((resolve) => {
+        canvas.toBlob((blob) => {
+          resolve(blob);
+        }, 'image/png', 0.7);
+      });
+    } catch (error) {
+      console.error('Failed to capture screenshot:', error);
+      return null;
+    }
+  }, []);
+
   const handleCanvasClick = useCallback(async (e) => {
     // Only intercept clicks in comment mode, not scrolls
     if (mode !== 'comment') return;
@@ -330,27 +357,51 @@ export default function ProjectCanvas() {
     }
 
     try {
-      const response = await axios.post(
-        `${API}/pins`,
-        { 
-          project_id: id, 
-          x, 
-          y,
-          page_url: normalizeUrl(currentPageUrl || project?.content_url),
-          scroll_x: iframeScroll.x,
-          scroll_y: iframeScroll.y
-        },
-        { headers: getAuthHeaders() }
-      );
+      // Capture screenshot of the visible viewport
+      const screenshotBlob = await captureCanvasScreenshot();
+      
+      let response;
+      if (screenshotBlob) {
+        // Use the new endpoint that accepts screenshot
+        const formData = new FormData();
+        formData.append('project_id', id);
+        formData.append('x', x.toString());
+        formData.append('y', y.toString());
+        formData.append('page_url', normalizeUrl(currentPageUrl || project?.content_url));
+        formData.append('scroll_x', iframeScroll.x.toString());
+        formData.append('scroll_y', iframeScroll.y.toString());
+        formData.append('screenshot', screenshotBlob, 'screenshot.png');
+        
+        response = await axios.post(
+          `${API}/pins/with-screenshot`,
+          formData,
+          { headers: { ...getAuthHeaders(), 'Content-Type': 'multipart/form-data' } }
+        );
+      } else {
+        // Fallback to regular pin creation
+        response = await axios.post(
+          `${API}/pins`,
+          { 
+            project_id: id, 
+            x, 
+            y,
+            page_url: normalizeUrl(currentPageUrl || project?.content_url),
+            scroll_x: iframeScroll.x,
+            scroll_y: iframeScroll.y
+          },
+          { headers: getAuthHeaders() }
+        );
+      }
+      
       const newPin = response.data;
       setPins(prevPins => [...prevPins, newPin]);
       setSelectedPin(newPin);
-      toast.success('Pin created! Add a comment.');
+      toast.success('Pin created with screenshot! Add a comment.');
     } catch (error) {
       console.error('Failed to create pin:', error);
       toast.error(error.response?.data?.detail || 'Failed to create pin');
     }
-  }, [mode, user, id, currentPageUrl, project, iframeScroll, getAuthHeaders]);
+  }, [mode, user, id, currentPageUrl, project, iframeScroll, getAuthHeaders, captureCanvasScreenshot]);
 
   const handleSubmitComment = useCallback(async () => {
     if (!newComment.trim() && !selectedFile) {
