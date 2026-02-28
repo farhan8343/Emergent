@@ -28,10 +28,44 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # Set Playwright browsers path before importing playwright
-if os.environ.get('PLAYWRIGHT_BROWSERS_PATH'):
-    os.environ['PLAYWRIGHT_BROWSERS_PATH'] = os.environ['PLAYWRIGHT_BROWSERS_PATH']
-else:
-    os.environ['PLAYWRIGHT_BROWSERS_PATH'] = '/pw-browsers'
+PLAYWRIGHT_PATH = os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '/pw-browsers')
+os.environ['PLAYWRIGHT_BROWSERS_PATH'] = PLAYWRIGHT_PATH
+
+# Fix Playwright browser symlinks on startup
+def setup_playwright_browsers():
+    """Create symlinks for Playwright browser versions to handle version mismatches"""
+    pw_path = Path(PLAYWRIGHT_PATH)
+    if not pw_path.exists():
+        return
+    
+    # Find actual chromium directory
+    actual_chromium = None
+    for item in pw_path.iterdir():
+        if item.is_dir() and 'chromium' in item.name and not item.is_symlink():
+            actual_chromium = item
+            break
+    
+    if not actual_chromium:
+        return
+    
+    # Create symlinks for common version variations
+    versions_to_link = [
+        'chromium_headless_shell-1200',
+        'chromium_headless_shell-1208',
+        'chromium-1200',
+        'chromium-1208',
+    ]
+    
+    for version in versions_to_link:
+        symlink_path = pw_path / version
+        if not symlink_path.exists():
+            try:
+                symlink_path.symlink_to(actual_chromium.name)
+            except Exception:
+                pass
+
+# Run browser setup
+setup_playwright_browsers()
 
 from playwright.async_api import async_playwright
 from PIL import Image
