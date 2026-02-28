@@ -814,21 +814,17 @@ export default function ProjectCanvas() {
                       />
                     )}
                     
-                    {/* Clickable layer for adding pins - only captures clicks, not scroll */}
+                    {/* Clickable layer for adding pins - pointer-events only on click */}
                     {mode === 'comment' && (
                       <div 
-                        className="absolute inset-0 z-19"
+                        className="absolute inset-0"
                         style={{ 
                           background: 'transparent',
-                          cursor: user ? 'crosshair' : 'default',
+                          cursor: user || guestName ? 'crosshair' : 'default',
+                          pointerEvents: 'auto',
+                          zIndex: 15,
                         }}
                         onClick={handleCanvasClick}
-                        onMouseDown={(e) => {
-                          // Allow iframe to handle scroll
-                          if (e.target === e.currentTarget) {
-                            e.stopPropagation();
-                          }
-                        }}
                       />
                     )}
                     
