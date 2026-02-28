@@ -600,6 +600,66 @@ async def create_pin(pin_data: PinCreate, current_user: dict = Depends(get_curre
         'scroll_x': pin_data.scroll_x or 0,
         'scroll_y': pin_data.scroll_y or 0,
         'status': 'open',
+        'screenshot_path': None,
+        'created_by': current_user['id'],
+        'created_at': datetime.now(timezone.utc).isoformat()
+    }
+    await db.pins.insert_one(pin)
+    
+    return Pin(**pin)
+
+@api_router.post("/pins/with-screenshot", response_model=Pin)
+async def create_pin_with_screenshot(
+    project_id: str = Form(...),
+    x: float = Form(...),
+    y: float = Form(...),
+    page_url: Optional[str] = Form(None),
+    scroll_x: Optional[float] = Form(0),
+    scroll_y: Optional[float] = Form(0),
+    screenshot: Optional[UploadFile] = File(None),
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a pin with an optional screenshot of the visible viewport"""
+    project = await db.projects.find_one(
+        {'id': project_id, 'team_id': current_user['team_id']},
+        {'_id': 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    
+    screenshot_path = None
+    
+    # Save screenshot if provided
+    if screenshot:
+        try:
+            screenshot_filename = f"pin_{uuid.uuid4()}.png"
+            screenshot_full_path = UPLOAD_DIR / 'screenshots' / screenshot_filename
+            
+            async with aiofiles.open(screenshot_full_path, 'wb') as f:
+                content = await screenshot.read()
+                await f.write(content)
+            
+            screenshot_path = f"uploads/screenshots/{screenshot_filename}"
+            
+            # Update storage usage
+            file_size_mb = len(content) / (1024 * 1024)
+            await db.teams.update_one(
+                {'id': current_user['team_id']},
+                {'$inc': {'storage_used_mb': file_size_mb}}
+            )
+        except Exception as e:
+            logger.error(f"Failed to save pin screenshot: {e}")
+    
+    pin = {
+        'id': str(uuid.uuid4()),
+        'project_id': project_id,
+        'x': x,
+        'y': y,
+        'page_url': page_url or project.get('content_url'),
+        'scroll_x': scroll_x or 0,
+        'scroll_y': scroll_y or 0,
+        'status': 'open',
+        'screenshot_path': screenshot_path,
         'created_by': current_user['id'],
         'created_at': datetime.now(timezone.utc).isoformat()
     }
