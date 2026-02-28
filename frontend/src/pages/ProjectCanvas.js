@@ -693,8 +693,8 @@ export default function ProjectCanvas() {
       <Navbar />
       
       <div className="flex-1 flex overflow-hidden">
-        {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0">
+        {/* Sidebar - LEFT SIDE - ALWAYS VISIBLE */}
+        <div className="w-96 border-r bg-card flex flex-col flex-shrink-0" data-testid="comments-sidebar">
           {/* Header */}
           <div className="border-b bg-card p-4 flex-shrink-0">
             <div className="flex items-center justify-between">
