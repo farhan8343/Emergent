@@ -980,7 +980,7 @@ export default function ProjectCanvas() {
 
               <Button
                 className="w-full"
-                onClick={handleAddComment}
+                onClick={handleSubmitComment}
                 disabled={!selectedPin || isSubmitting || (!newComment.trim() && !selectedFile)}
                 data-testid="submit-comment-btn"
               >
