@@ -814,17 +814,30 @@ export default function ProjectCanvas() {
                       />
                     )}
                     
-                    {/* Clickable layer for adding pins - pointer-events only on click */}
+                    {/* Clickable layer for adding pins - forwards scroll to iframe */}
                     {mode === 'comment' && (
                       <div 
                         className="absolute inset-0"
                         style={{ 
                           background: 'transparent',
                           cursor: user || guestName ? 'crosshair' : 'default',
-                          pointerEvents: 'auto',
                           zIndex: 15,
                         }}
                         onClick={handleCanvasClick}
+                        onWheel={(e) => {
+                          // Forward scroll events to iframe
+                          if (iframeRef.current?.contentWindow) {
+                            try {
+                              iframeRef.current.contentWindow.scrollBy({
+                                left: e.deltaX,
+                                top: e.deltaY,
+                                behavior: 'auto'
+                              });
+                            } catch (err) {
+                              // Cross-origin - ignore
+                            }
+                          }
+                        }}
                       />
                     )}
                     
