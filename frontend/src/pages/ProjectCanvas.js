@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 import { 
   ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, 
   Share2, Eye, MessageCircle, Search, ArrowUpDown, ChevronLeft, 
-  Paperclip, ExternalLink, Loader2, Globe, Camera
+  Paperclip, ExternalLink, Loader2, Globe, Camera, PauseCircle, PlayCircle
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
