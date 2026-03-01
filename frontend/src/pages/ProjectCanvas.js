@@ -855,15 +855,15 @@ export default function ProjectCanvas() {
                         </div>
                       </div>
 
-                      {/* Pin Screenshot */}
+                      {/* Pin Screenshot - Click to open lightbox */}
                       {selectedPin.screenshot_path && (
-                        <div className="mb-3">
-                          <img 
-                            src={`${BACKEND_URL}/api/files/screenshots/${selectedPin.screenshot_path.split('/').pop()}`}
-                            alt="Pin screenshot"
-                            className="w-full rounded-lg border"
-                          />
-                        </div>
+                        <button
+                          onClick={() => setLightboxImage(`${BACKEND_URL}/api/files/screenshots/${selectedPin.screenshot_path.split('/').pop()}`)}
+                          className="flex items-center space-x-2 text-sm text-accent hover:text-accent/80 hover:underline mb-3"
+                        >
+                          <Camera className="w-4 h-4" />
+                          <span>View Screenshot</span>
+                        </button>
                       )}
 
                       {/* Resolve Button */}
