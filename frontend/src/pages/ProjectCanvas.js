@@ -298,6 +298,12 @@ export default function ProjectCanvas() {
     // Only intercept clicks in comment mode, not scrolls
     if (mode !== 'comment') return;
     
+    // Check if comments are paused for guests
+    if (!user && project?.comments_paused) {
+      toast.error('Comments are currently paused for this project');
+      return;
+    }
+    
     // Guests need to provide info to create pins
     if (!user && !guestName) {
       setShowGuestDialog(true);
