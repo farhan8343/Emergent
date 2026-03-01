@@ -654,6 +654,31 @@ async def refresh_project_thumbnail(
     
     raise HTTPException(status_code=500, detail='Failed to generate thumbnail')
 
+@api_router.post("/projects/{project_id}/toggle-comments")
+async def toggle_project_comments(
+    project_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Toggle comments pause status for a project (owner only)"""
+    project = await db.projects.find_one(
+        {'id': project_id, 'team_id': current_user['team_id']},
+        {'_id': 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    
+    # Only project owner/team can toggle
+    if project.get('created_by') != current_user['id'] and current_user.get('role') != 'owner':
+        raise HTTPException(status_code=403, detail='Only project owner can pause comments')
+    
+    new_status = not project.get('comments_paused', False)
+    await db.projects.update_one(
+        {'id': project_id},
+        {'$set': {'comments_paused': new_status}}
+    )
+    
+    return {'comments_paused': new_status, 'message': f'Comments {"paused" if new_status else "resumed"}'}
+
 # Pin Routes
 @api_router.post("/pins", response_model=Pin)
 async def create_pin(
