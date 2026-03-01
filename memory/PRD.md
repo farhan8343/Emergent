@@ -1,8 +1,5 @@
 # Markuply - Visual Markup and Review SaaS
 
-## Original Problem Statement
-Build a SaaS web application called "Markuply" for visual markup and review. Users (Owners, Team Members, and Guests) should be able to leave pin-based comments on live website URLs, PDFs, and images.
-
 ## Tech Stack
 - **Frontend**: React, Tailwind CSS, Shadcn UI
 - **Backend**: FastAPI, Python, Playwright (reverse proxy)
@@ -13,59 +10,44 @@ Build a SaaS web application called "Markuply" for visual markup and review. Use
 
 ### Core Features ✅
 1. **Reverse Proxy with Cloudflare Bypass** - Playwright renders pages with stealth settings
-2. **Pin-based Commenting** - Click to create pins, threaded comments
-3. **Sidebar on LEFT** - Comments panel moved to left side
+2. **Pin-based Commenting** - Click to create pins, instant creation
+3. **Sidebar on LEFT** - Comments panel on left side
 4. **Guest Access** - Full viewing without login, popup only when adding pin/comment
-5. **Instant Pin Creation** - Pin appears immediately, screenshot captured in background
-6. **Auto Screenshot Capture** - Server-side Playwright captures viewport on pin creation
-7. **User Mentions** - @ symbol triggers suggestions
-8. **Pin Hover Preview** - Floating box to LEFT of pin with View Thread / Resolve buttons
+5. **Screenshot on Pin Creation** - Background task captures viewport
+6. **Pause Comments** - Host can pause new comments for guests
+7. **Page-specific Pins** - Only show pins for current page on canvas
+8. **Pin Navigation** - Click pin in list to navigate to page and scroll position
+9. **Loading Indicators** - Show loading when navigating within proxy
+10. **View Screenshot Lightbox** - Click "View Screenshot" to open fullscreen
 
-### Bug Fixes (Feb 28, 2026) ✅
-1. **Guest Link Access** - No redirect to login, full viewing allowed
-2. **Login Popup Only When Needed** - Only appears when trying to add pin/comment
-3. **Guest Info Stored** - Saved in localStorage for future visits
-4. **Sidebar Moved to LEFT** - Complete restructure of layout
-5. **Instant Pin Creation** - No blocking, async screenshot generation
-6. **Screenshot Attached to Pin** - Background task saves screenshot path to pin record
-7. **Thumbnail for Cloudflare Sites** - Stealth Playwright with custom headers
-
-### Guest Flow
-1. Guest accesses share link: `/project/{id}` → Project loads immediately
-2. Guest can browse freely, scroll, switch modes
-3. Guest clicks to add pin → "Join the conversation" dialog appears
-4. Guest provides name + email (stored in localStorage)
-5. Guest creates pin (instant) → Screenshot captured in background
-6. Guest can add comments
+### Recent Fixes (Mar 1, 2026) ✅
+1. Guest redirect fixed - no longer redirects to homepage
+2. File attachment error fixed - background screenshot generation
+3. Sidebar moved to LEFT side
+4. Pin creation is instant (screenshot in background)
+5. "View Screenshot" link opens lightbox
+6. Pause/Resume comments toggle for hosts
+7. Loading overlay when navigating pages
+8. Page URL tracking for page-specific pins
 
 ### API Endpoints
 
-#### Public Endpoints (No Auth Required)
-- GET /api/projects/{id}/public - Project details for guests
-- GET /api/projects/{id}/pins/public - Pins for guests
-- POST /api/pins/guest - Create pin as guest
+#### Public Endpoints (No Auth)
+- GET /api/projects/{id}/public
+- GET /api/projects/{id}/pins/public
+- POST /api/pins/guest
 
 #### Protected Endpoints
 - POST /api/pins - Create pin with background screenshot
-- PUT /api/pins/{pin_id}/status - Update pin status
+- POST /api/projects/{id}/toggle-comments - Pause/resume comments
 
-## Project Structure
-```
-/app/
-├── backend/
-│   ├── server.py        # All routes + Playwright proxy
-│   └── uploads/         # Screenshots and thumbnails
-└── frontend/
-    └── src/
-        ├── App.js       # Routes - /project/:id is PUBLIC
-        ├── pages/
-        │   └── ProjectCanvas.js - Sidebar LEFT, instant pin creation
-        └── context/
-            └── AuthContext.js
-```
+## Guest Flow
+1. Guest accesses share link → Project loads immediately
+2. Guest can browse freely, scroll, switch modes
+3. Guest clicks to add pin → "Join the conversation" dialog
+4. Guest provides name + email (stored in localStorage)
+5. Guest creates pin (instant) → Screenshot captured in background
 
-## Pending/Future Tasks
-1. **P1**: Email notifications for replies/mentions
-2. **P2**: Stripe subscription integration
-3. **P2**: Plan-based limits enforcement
-4. **P3**: Advanced annotation tools
+## Pending Tasks
+1. Email notifications for replies/mentions
+2. Stripe subscription integration
