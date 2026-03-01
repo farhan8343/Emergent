@@ -1095,21 +1095,12 @@ async def create_comment_with_attachment(
                     {'$inc': {'storage_used_mb': file_size_mb}}
                 )
     
-    # Get pin and project info for screenshot
+    # Get pin and project info for background screenshot
     pin = await db.pins.find_one({'id': pin_id}, {'_id': 0})
-    screenshot_path = None
     
-    if pin:
-        project = await db.projects.find_one({'id': pin['project_id']}, {'_id': 0})
-        if project and project.get('content_url'):
-            screenshot_path = await capture_screenshot(
-                project['content_url'],
-                pin['x'],
-                pin['y']
-            )
-    
+    comment_id = str(uuid.uuid4())
     comment = {
-        'id': str(uuid.uuid4()),
+        'id': comment_id,
         'pin_id': pin_id,
         'author_type': author_type,
         'author_id': author_id,
@@ -1117,12 +1108,65 @@ async def create_comment_with_attachment(
         'guest_email': guest_email if is_guest else None,
         'content': content,
         'attachment_path': attachment_path,
-        'screenshot_path': screenshot_path,
+        'screenshot_path': None,  # Will be added by background task
         'created_at': datetime.now(timezone.utc).isoformat()
     }
     await db.comments.insert_one(comment)
     
+    # Generate screenshot in background if pin has project with URL
+    if pin:
+        project = await db.projects.find_one({'id': pin['project_id']}, {'_id': 0})
+        if project and project.get('content_url'):
+            background_tasks.add_task(
+                generate_comment_screenshot,
+                comment_id,
+                project['content_url'],
+                pin.get('scroll_y', 0)
+            )
+    
     return Comment(**comment)
+
+async def generate_comment_screenshot(comment_id: str, url: str, scroll_y: float):
+    """Background task to capture screenshot for a comment"""
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=['--disable-blink-features=AutomationControlled', '--no-sandbox']
+            )
+            context = await browser.new_context(
+                viewport={'width': 1200, 'height': 800},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            )
+            page = await context.new_page()
+            
+            try:
+                await page.goto(url, wait_until='networkidle', timeout=30000)
+            except Exception:
+                await page.goto(url, wait_until='domcontentloaded', timeout=20000)
+                await page.wait_for_timeout(2000)
+            
+            if scroll_y > 0:
+                await page.evaluate(f'window.scrollTo(0, {scroll_y})')
+                await page.wait_for_timeout(500)
+            
+            screenshot_bytes = await page.screenshot()
+            await browser.close()
+            
+            screenshot_filename = f"comment_{comment_id}.png"
+            screenshot_path = UPLOAD_DIR / 'screenshots' / screenshot_filename
+            
+            async with aiofiles.open(screenshot_path, 'wb') as f:
+                await f.write(screenshot_bytes)
+            
+            await db.comments.update_one(
+                {'id': comment_id},
+                {'$set': {'screenshot_path': f"uploads/screenshots/{screenshot_filename}"}}
+            )
+            
+            logger.info(f"Generated screenshot for comment {comment_id}")
+    except Exception as e:
+        logger.error(f"Failed to generate comment screenshot: {e}")
 
 @api_router.get("/comments/{pin_id}", response_model=List[Comment])
 async def get_comments(pin_id: str):
