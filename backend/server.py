@@ -1577,6 +1577,13 @@ def rewrite_html(html_content: str, base_url: str, project_id: str = None) -> st
                         !target.href.startsWith('#') &&
                         !target.href.startsWith('data:')) {{
                         e.preventDefault();
+                        // Notify parent that page is loading
+                        if (window.parent !== window) {{
+                            window.parent.postMessage({{
+                                type: 'MARKUPLY_PAGE_LOADING',
+                                url: target.href
+                            }}, '*');
+                        }}
                         var proxyUrl = '/api/proxy?url=' + encodeURIComponent(target.href);
                         window.location.href = proxyUrl;
                     }}
