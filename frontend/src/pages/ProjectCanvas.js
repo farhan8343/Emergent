@@ -610,10 +610,29 @@ export default function ProjectCanvas() {
   }, []);
 
   const handleShare = useCallback(() => {
-    const shareUrl = `${window.location.origin}/project/${id}/share`;
+    const shareUrl = `${window.location.origin}/project/${id}`;
     navigator.clipboard.writeText(shareUrl);
     toast.success('Share link copied to clipboard');
   }, [id]);
+
+  const handleToggleComments = useCallback(async () => {
+    if (!user || !project) return;
+    
+    try {
+      const response = await axios.post(
+        `${API}/projects/${id}/toggle-comments`,
+        {},
+        { headers: getAuthHeaders() }
+      );
+      
+      // Update local project state
+      setProject(prev => ({ ...prev, comments_paused: response.data.comments_paused }));
+      toast.success(response.data.message);
+    } catch (error) {
+      console.error('Failed to toggle comments:', error);
+      toast.error(error.response?.data?.detail || 'Failed to toggle comments');
+    }
+  }, [user, project, id, getAuthHeaders]);
 
   const handleGuestContinue = useCallback(() => {
     if (guestName.trim() && guestEmail.trim()) {
