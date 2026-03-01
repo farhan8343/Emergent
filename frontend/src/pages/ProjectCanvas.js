@@ -1463,6 +1463,41 @@ export default function ProjectCanvas() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Screenshot Lightbox */}
+      {lightboxImage && (
+        <div 
+          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          onClick={() => setLightboxImage(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute -top-10 right-0 text-white hover:text-white/80"
+              onClick={() => setLightboxImage(null)}
+            >
+              <X className="w-6 h-6" />
+            </Button>
+            <img 
+              src={lightboxImage}
+              alt="Pin screenshot"
+              className="w-full h-full object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Page Loading Overlay */}
+      {isPageLoading && (
+        <div className="fixed inset-0 bg-background/50 z-40 flex items-center justify-center">
+          <div className="bg-card p-6 rounded-lg shadow-lg flex items-center space-x-3">
+            <Loader2 className="w-6 h-6 animate-spin text-accent" />
+            <span>Loading page...</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
