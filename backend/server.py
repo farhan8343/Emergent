@@ -520,6 +520,7 @@ async def create_project(
         'file_path': file_path,
         'thumbnail_path': thumbnail_path,
         'screenshot_path': screenshot_path,
+        'comments_paused': False,
         'created_by': current_user['id'],
         'created_at': datetime.now(timezone.utc).isoformat()
     }
