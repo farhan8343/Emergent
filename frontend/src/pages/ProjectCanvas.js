@@ -499,9 +499,49 @@ export default function ProjectCanvas() {
 
   const handlePinClick = useCallback((pin, e) => {
     e?.stopPropagation();
-    setSelectedPin(pin);
-    setSidebarView('thread');
-  }, []);
+    
+    // Check if pin is on a different page
+    const pinPageUrl = normalizeUrl(pin.page_url);
+    const currentUrl = normalizeUrl(currentPageUrl);
+    
+    if (pinPageUrl !== currentUrl && pin.page_url && project?.type === 'url') {
+      // Navigate to the pin's page first
+      setIsNavigatingToPin(true);
+      setIsPageLoading(true);
+      
+      // Store the pin to select after navigation
+      const proxyUrl = `${API}/proxy?url=${encodeURIComponent(pin.page_url)}`;
+      if (iframeRef.current) {
+        iframeRef.current.src = proxyUrl;
+      }
+      
+      // Wait for page to load, then scroll to pin position
+      setTimeout(() => {
+        if (iframeRef.current?.contentWindow && pin.scroll_y) {
+          try {
+            iframeRef.current.contentWindow.scrollTo(0, pin.scroll_y);
+          } catch (err) {
+            // Cross-origin error - ignore
+          }
+        }
+        setIsPageLoading(false);
+        setIsNavigatingToPin(false);
+        setSelectedPin(pin);
+        setSidebarView('thread');
+      }, 3000);
+    } else {
+      // Same page - just scroll to pin position
+      if (iframeRef.current?.contentWindow && pin.scroll_y) {
+        try {
+          iframeRef.current.contentWindow.scrollTo(0, pin.scroll_y);
+        } catch (err) {
+          // Cross-origin error - ignore
+        }
+      }
+      setSelectedPin(pin);
+      setSidebarView('thread');
+    }
+  }, [currentPageUrl, project]);
 
   const handleBackToOverview = useCallback(() => {
     setSelectedPin(null);
