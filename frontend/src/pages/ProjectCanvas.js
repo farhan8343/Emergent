@@ -1134,6 +1134,28 @@ export default function ProjectCanvas() {
                   <Share2 className="w-4 h-4 mr-2" />
                   Share
                 </Button>
+
+                {/* Pause/Resume Comments - only for project owner */}
+                {user && project.created_by === user.id && (
+                  <Button 
+                    size="sm" 
+                    variant={project.comments_paused ? "default" : "outline"}
+                    onClick={handleToggleComments}
+                    title={project.comments_paused ? "Resume comments" : "Pause new comments"}
+                  >
+                    {project.comments_paused ? (
+                      <>
+                        <PlayCircle className="w-4 h-4 mr-2" />
+                        Resume
+                      </>
+                    ) : (
+                      <>
+                        <PauseCircle className="w-4 h-4 mr-2" />
+                        Pause
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           </div>
