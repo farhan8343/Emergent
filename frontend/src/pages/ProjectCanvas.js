@@ -196,7 +196,11 @@ export default function ProjectCanvas() {
   // Listen for messages from proxied iframe (page loads and scroll updates)
   useEffect(() => {
     const handleMessage = (event) => {
-      if (event.data?.type === 'MARKUPLY_PAGE_LOADED') {
+      if (event.data?.type === 'MARKUPLY_PAGE_LOADING') {
+        // Page is loading (link clicked)
+        setIsPageLoading(true);
+      } else if (event.data?.type === 'MARKUPLY_PAGE_LOADED') {
+        setIsPageLoading(false);
         setIframeLoaded(true);
         if (event.data.url) {
           // Extract the actual URL from the message
