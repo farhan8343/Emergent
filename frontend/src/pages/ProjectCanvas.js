@@ -106,14 +106,14 @@ export default function ProjectCanvas() {
       console.error('Failed to fetch project:', error);
       if (error.response?.status === 404) {
         toast.error('Project not found');
-        navigate('/');
       } else {
-        toast.error('Failed to load project');
+        toast.error('Failed to load project. Please try again.');
       }
+      // Don't redirect - let user stay on page
     } finally {
       setLoading(false);
     }
-  }, [id, user, getAuthHeaders, navigate]);
+  }, [id, user, getAuthHeaders]);
 
   const fetchPins = useCallback(async () => {
     try {
