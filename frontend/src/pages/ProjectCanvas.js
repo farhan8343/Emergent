@@ -74,6 +74,9 @@ export default function ProjectCanvas() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hoveredPin, setHoveredPin] = useState(null);
+  const [lightboxImage, setLightboxImage] = useState(null);
+  const [isPageLoading, setIsPageLoading] = useState(false);
+  const [isNavigatingToPin, setIsNavigatingToPin] = useState(false);
   
   // Mention state
   const [showMentions, setShowMentions] = useState(false);
