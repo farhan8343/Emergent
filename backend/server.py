@@ -142,6 +142,7 @@ class Project(BaseModel):
     file_path: Optional[str] = None
     thumbnail_path: Optional[str] = None
     screenshot_path: Optional[str] = None
+    comments_paused: bool = False
     created_by: str
     created_at: str
 
