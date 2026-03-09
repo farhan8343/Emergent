@@ -349,99 +349,106 @@ export default function Dashboard() {
           </Card>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredAndSortedProjects.map((project) => (
-              <Card
-                key={project.id}
-                className="border-border/40 hover:shadow-lg transition-all duration-300 cursor-pointer group overflow-hidden"
-                onClick={() => navigate(`/project/${project.id}`)}
-                data-testid={`project-card-${project.id}`}
-              >
-                {/* Thumbnail Preview */}
-                <div className="relative h-48 bg-secondary/50 overflow-hidden">
-                  {project.thumbnail_path ? (
-                    <img
-                      src={`${BACKEND_URL}/api/files/screenshots/${project.thumbnail_path.split('/').pop()}`}
-                      alt={project.name}
-                      className="w-full h-full object-cover object-top"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                        e.target.parentElement.querySelector('.fallback-icon').style.display = 'flex';
-                      }}
-                    />
-                  ) : null}
-                  <div className={`w-full h-full flex items-center justify-center fallback-icon ${project.thumbnail_path ? 'hidden' : ''}`}>
-                    <div className="text-center text-muted-foreground">
-                      {getProjectIcon(project.type)}
-                      <p className="text-xs mt-2">{project.type.toUpperCase()}</p>
-                      {project.type === 'url' && !project.thumbnail_path && (
-                        <p className="text-xs mt-1 text-accent">Generating thumbnail...</p>
-                      )}
+            {filteredAndSortedProjects.map((project) => {
+              const stats = projectStats[project.id] || { open_pins: 0, total_comments: 0, has_new_activity: false };
+              
+              return (
+                <Card
+                  key={project.id}
+                  className="border-border/40 hover:shadow-lg transition-all duration-300 cursor-pointer group overflow-hidden relative"
+                  onClick={() => navigate(`/project/${project.id}`)}
+                  data-testid={`project-card-${project.id}`}
+                >
+                  {/* New Activity Indicator */}
+                  {stats.has_new_activity && (
+                    <div className="absolute top-3 left-3 z-10">
+                      <span className="flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-accent"></span>
+                      </span>
                     </div>
-                  </div>
+                  )}
                   
-                  {/* Hover Actions */}
-                  <div className="absolute top-2 right-2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {/* Refresh Thumbnail Button - only for URL projects */}
-                    {project.type === 'url' && (
+                  {/* Thumbnail Preview */}
+                  <div className="relative h-48 bg-secondary/50 overflow-hidden">
+                    {project.thumbnail_path ? (
+                      <img
+                        src={`${BACKEND_URL}/api/files/screenshots/${project.thumbnail_path.split('/').pop()}`}
+                        alt={project.name}
+                        className="w-full h-full object-cover object-top"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.parentElement.querySelector('.fallback-icon').style.display = 'flex';
+                        }}
+                      />
+                    ) : null}
+                    <div className={`w-full h-full flex items-center justify-center fallback-icon ${project.thumbnail_path ? 'hidden' : ''}`}>
+                      <div className="text-center text-muted-foreground">
+                        {getProjectIcon(project.type)}
+                        <p className="text-xs mt-2">{project.type.toUpperCase()}</p>
+                        {project.type === 'url' && !project.thumbnail_path && (
+                          <p className="text-xs mt-1 text-accent">Generating thumbnail...</p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Hover Actions - removed refresh button */}
+                    <div className="absolute top-2 right-2 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={(e) => handleRefreshThumbnail(project.id, e)}
-                        disabled={refreshingThumbnails[project.id]}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleShareProject(project.id);
+                        }}
                         className="h-8 w-8 p-0"
-                        title="Refresh thumbnail"
-                        data-testid={`refresh-thumbnail-${project.id}`}
+                        data-testid={`share-project-${project.id}`}
                       >
-                        {refreshingThumbnails[project.id] ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="w-4 h-4" />
-                        )}
+                        <Link2 className="w-4 h-4" />
                       </Button>
-                    )}
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleShareProject(project.id);
-                      }}
-                      className="h-8 w-8 p-0"
-                      data-testid={`share-project-${project.id}`}
-                    >
-                      <Link2 className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteProject(project.id);
-                      }}
-                      className="h-8 w-8 p-0"
-                      data-testid={`delete-project-${project.id}`}
-                    >
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteProject(project.id);
+                        }}
+                        className="h-8 w-8 p-0"
+                        data-testid={`delete-project-${project.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
 
-                {/* Project Info */}
-                <CardContent className="p-4">
-                  <h3 className="font-semibold text-lg mb-1 truncate group-hover:text-accent transition-colors" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                    {project.name}
-                  </h3>
-                  {project.content_url && (
-                    <p className="text-xs text-muted-foreground truncate mb-2">
-                      {project.content_url}
-                    </p>
-                  )}
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Updated {new Date(project.created_at).toLocaleDateString()}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  {/* Project Info */}
+                  <CardContent className="p-4">
+                    <h3 className="font-semibold text-lg mb-1 truncate group-hover:text-accent transition-colors" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                      {project.name}
+                    </h3>
+                    {project.content_url && (
+                      <p className="text-xs text-muted-foreground truncate mb-2">
+                        {project.content_url}
+                      </p>
+                    )}
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{formatRelativeTime(project.created_at)}</span>
+                      <div className="flex items-center space-x-2">
+                        <span className="flex items-center">
+                          <MessageSquare className="w-3 h-3 mr-1" />
+                          {stats.total_comments}
+                        </span>
+                        {stats.open_pins > 0 && (
+                          <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                            {stats.open_pins} open
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
