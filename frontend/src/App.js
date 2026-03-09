@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import ProjectCanvas from './pages/ProjectCanvas';
 import AdminPanel from './pages/AdminPanel';
 import SuperAdmin from './pages/SuperAdmin';
+import GuestProjects from './pages/GuestProjects';
 import ProtectedRoute from './components/ProtectedRoute';
 import { Toaster } from 'sonner';
 
@@ -29,6 +30,8 @@ function App() {
             />
             {/* Project route is PUBLIC - allows guest access via share links */}
             <Route path="/project/:id" element={<ProjectCanvas />} />
+            {/* Guest projects page - shows projects where guest has commented */}
+            <Route path="/guest-projects" element={<GuestProjects />} />
             <Route
               path="/admin"
               element={
