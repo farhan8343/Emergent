@@ -898,6 +898,7 @@ class GuestPinCreate(BaseModel):
     scroll_y: Optional[float] = 0
     guest_name: str
     guest_email: str
+    device_type: str = "desktop"
 
 @api_router.post("/pins/guest", response_model=Pin)
 async def create_guest_pin(
@@ -908,6 +909,10 @@ async def create_guest_pin(
     project = await db.projects.find_one({'id': pin_data.project_id}, {'_id': 0})
     if not project:
         raise HTTPException(status_code=404, detail='Project not found')
+    
+    # Check if comments are paused
+    if project.get('comments_paused'):
+        raise HTTPException(status_code=403, detail='Comments are paused for this project')
     
     pin_id = str(uuid.uuid4())
     
@@ -921,6 +926,8 @@ async def create_guest_pin(
         'scroll_y': pin_data.scroll_y or 0,
         'status': 'open',
         'screenshot_path': None,
+        'device_type': pin_data.device_type,
+        'author_name': pin_data.guest_name,
         'created_by': f"guest:{pin_data.guest_email}",
         'created_at': datetime.now(timezone.utc).isoformat()
     }
