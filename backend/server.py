@@ -165,6 +165,8 @@ class Pin(BaseModel):
     scroll_y: Optional[float] = 0
     status: str
     screenshot_path: Optional[str] = None
+    device_type: str = "desktop"
+    author_name: Optional[str] = None
     created_by: str
     created_at: str
 
