@@ -260,6 +260,49 @@ export default function ProjectCanvas() {
     return `${API}/proxy?url=${encodedUrl}&project_id=${id}`;
   }, [id]);
 
+  // Extract real URL from proxy URL or page_url
+  const getRealUrl = useCallback((url) => {
+    if (!url) return '';
+    // If it's a proxy URL, extract the actual URL
+    if (url.includes('/api/proxy?url=')) {
+      try {
+        const urlParams = new URLSearchParams(url.split('?')[1]);
+        const actualUrl = urlParams.get('url');
+        if (actualUrl) return decodeURIComponent(actualUrl);
+      } catch (e) {
+        // fallback
+      }
+    }
+    return url;
+  }, []);
+
+  // Get current device type based on responsive view
+  const getCurrentDeviceType = useCallback(() => {
+    switch (responsiveView) {
+      case 'tablet': return 'tablet';
+      case 'mobile': return 'mobile';
+      default: return 'desktop';
+    }
+  }, [responsiveView]);
+
+  // Filter pins by current page URL and device type
+  const currentPagePins = useMemo(() => {
+    const deviceType = getCurrentDeviceType();
+    const currentUrl = normalizeUrl(currentPageUrl);
+    
+    return pins.filter(pin => {
+      // Filter by device type
+      const pinDevice = pin.device_type || 'desktop';
+      if (pinDevice !== deviceType) return false;
+      
+      // Filter by page URL
+      const pinUrl = normalizeUrl(pin.page_url);
+      if (currentUrl && pinUrl && currentUrl !== pinUrl) return false;
+      
+      return true;
+    });
+  }, [pins, currentPageUrl, getCurrentDeviceType]);
+
   // ==================== PIN POSITIONING ====================
   
   // Use CSS transforms for smooth pin positioning (reduces lag)
