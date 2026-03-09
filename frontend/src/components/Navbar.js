@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './ui/button';
-import { LogOut, LayoutDashboard, Settings, Shield } from 'lucide-react';
+import { LogOut, LayoutDashboard, Settings, Shield, User } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,13 +10,31 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { Avatar, AvatarFallback } from './ui/avatar';
+import { useState, useEffect } from 'react';
 
 export const Navbar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  
+  // Check for guest info in localStorage
+  const [guestName, setGuestName] = useState(null);
+  
+  useEffect(() => {
+    const storedName = localStorage.getItem('markuply_guest_name');
+    if (storedName && !user) {
+      setGuestName(storedName);
+    }
+  }, [user]);
 
   const handleLogout = () => {
     logout();
+    navigate('/');
+  };
+
+  const handleGuestLogout = () => {
+    localStorage.removeItem('markuply_guest_name');
+    localStorage.removeItem('markuply_guest_email');
+    setGuestName(null);
     navigate('/');
   };
 
@@ -63,6 +81,38 @@ export const Navbar = () => {
                 <DropdownMenuItem onClick={handleLogout} data-testid="nav-logout">
                   <LogOut className="mr-2 h-4 w-4" />
                   Logout
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : guestName ? (
+            // Guest user - show their name
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
+                  <Avatar data-testid="guest-avatar">
+                    <AvatarFallback className="bg-secondary text-foreground">
+                      {guestName.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="text-left hidden md:block">
+                    <p className="text-sm font-medium">{guestName}</p>
+                    <p className="text-xs text-muted-foreground">Guest</p>
+                  </div>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => navigate('/guest-projects')} data-testid="nav-guest-projects">
+                  <LayoutDashboard className="mr-2 h-4 w-4" />
+                  My Projects
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate('/auth')} data-testid="nav-login">
+                  <User className="mr-2 h-4 w-4" />
+                  Sign In
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleGuestLogout} data-testid="nav-guest-logout">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Clear Guest Session
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
