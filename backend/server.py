@@ -656,6 +656,50 @@ async def delete_project(project_id: str, current_user: dict = Depends(get_curre
     
     return {'message': 'Project deleted successfully'}
 
+@api_router.get("/guest/projects")
+async def get_guest_projects(email: str):
+    """Get projects where a guest has commented"""
+    if not email:
+        raise HTTPException(status_code=400, detail='Email is required')
+    
+    # Find all pins created by this guest
+    guest_id = f"guest:{email}"
+    pins = await db.pins.find({'created_by': guest_id}, {'_id': 0, 'project_id': 1}).to_list(1000)
+    
+    # Find all comments by this guest
+    comments = await db.comments.find({'guest_email': email}, {'_id': 0, 'pin_id': 1}).to_list(1000)
+    
+    # Get project IDs from pins
+    project_ids_from_pins = set(p['project_id'] for p in pins)
+    
+    # Get project IDs from comments
+    if comments:
+        pin_ids = [c['pin_id'] for c in comments]
+        comment_pins = await db.pins.find({'id': {'$in': pin_ids}}, {'_id': 0, 'project_id': 1}).to_list(1000)
+        project_ids_from_comments = set(p['project_id'] for p in comment_pins)
+    else:
+        project_ids_from_comments = set()
+    
+    # Combine all project IDs
+    all_project_ids = list(project_ids_from_pins | project_ids_from_comments)
+    
+    if not all_project_ids:
+        return []
+    
+    # Fetch projects
+    projects = await db.projects.find({'id': {'$in': all_project_ids}}, {'_id': 0}).to_list(100)
+    
+    # Add comment count for each project
+    result = []
+    for project in projects:
+        project_pins = await db.pins.find({'project_id': project['id']}, {'_id': 0, 'id': 1}).to_list(1000)
+        pin_ids = [p['id'] for p in project_pins]
+        comment_count = await db.comments.count_documents({'pin_id': {'$in': pin_ids}, 'guest_email': email}) if pin_ids else 0
+        project['comment_count'] = comment_count
+        result.append(project)
+    
+    return result
+
 @api_router.post("/projects/{project_id}/refresh-thumbnail")
 async def refresh_project_thumbnail(
     project_id: str,
