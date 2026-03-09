@@ -1068,46 +1068,58 @@ export default function ProjectCanvas() {
                 value={newComment}
                 onChange={handleCommentChange}
                 disabled={!selectedPin}
-                className="min-h-[80px] resize-none"
+                className="min-h-[60px] resize-none"
                 data-testid="comment-input"
               />
 
-              {/* File Attachment */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                    className="hidden"
-                    accept="image/*,.pdf"
-                  />
+              {/* Selected file preview */}
+              {selectedFile && (
+                <div className="flex items-center justify-between bg-secondary/30 rounded px-2 py-1">
+                  <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                    📎 {selectedFile.name}
+                  </span>
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={!selectedPin}
+                    className="h-6 w-6 p-0"
+                    onClick={() => setSelectedFile(null)}
                   >
-                    <Paperclip className="w-4 h-4" />
+                    <X className="w-3 h-3" />
                   </Button>
-                  {selectedFile && (
-                    <span className="text-xs text-muted-foreground truncate max-w-[150px]">
-                      {selectedFile.name}
-                    </span>
-                  )}
                 </div>
-              </div>
+              )}
 
-              <Button
-                className="w-full"
-                onClick={handleSubmitComment}
-                disabled={!selectedPin || isSubmitting || (!newComment.trim() && !selectedFile)}
-                data-testid="submit-comment-btn"
-              >
-                {isSubmitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : null}
-                Add Comment
+              {/* Action buttons - always visible */}
+              <div className="flex items-center space-x-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  className="hidden"
+                  accept="image/*,.pdf,.doc,.docx"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={!selectedPin}
+                  className="flex-shrink-0"
+                >
+                  <Paperclip className="w-4 h-4 mr-1" />
+                  Attach
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleSubmitComment}
+                  disabled={!selectedPin || isSubmitting || (!newComment.trim() && !selectedFile)}
+                  data-testid="submit-comment-btn"
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : null}
+                  Add Comment
+                </Button>
+              </div>
               </Button>
             </div>
           </div>
