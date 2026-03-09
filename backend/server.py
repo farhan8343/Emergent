@@ -574,6 +574,42 @@ async def get_project_public(project_id: str):
         raise HTTPException(status_code=404, detail='Project not found')
     return Project(**project)
 
+@api_router.get("/projects/{project_id}/stats")
+async def get_project_stats(project_id: str, current_user: dict = Depends(get_current_user)):
+    """Get project statistics - open pins, total comments, activity"""
+    project = await db.projects.find_one(
+        {'id': project_id, 'team_id': current_user['team_id']},
+        {'_id': 0}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    
+    # Count open pins
+    open_pins = await db.pins.count_documents({'project_id': project_id, 'status': 'open'})
+    
+    # Count total comments
+    pins = await db.pins.find({'project_id': project_id}, {'_id': 0, 'id': 1}).to_list(1000)
+    pin_ids = [p['id'] for p in pins]
+    total_comments = await db.comments.count_documents({'pin_id': {'$in': pin_ids}}) if pin_ids else 0
+    
+    # Check for recent activity (last 24 hours)
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    recent_comments = await db.comments.count_documents({
+        'pin_id': {'$in': pin_ids},
+        'created_at': {'$gte': yesterday}
+    }) if pin_ids else 0
+    
+    recent_pins = await db.pins.count_documents({
+        'project_id': project_id,
+        'created_at': {'$gte': yesterday}
+    })
+    
+    return {
+        'open_pins': open_pins,
+        'total_comments': total_comments,
+        'has_new_activity': recent_comments > 0 or recent_pins > 0
+    }
+
 @api_router.get("/projects/{project_id}/pins/public")
 async def get_project_pins_public(project_id: str, page_url: str = None):
     """Get pins for public/guest access - no authentication required"""
