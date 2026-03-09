@@ -1426,7 +1426,7 @@ export default function ProjectCanvas() {
                       className="w-full h-auto block"
                       data-testid="project-image"
                     />
-                    {visiblePins.map((pin) => {
+                    {currentPagePins.map((pin) => {
                       const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
                       const pinComments = allComments[pin.id] || [];
                       const latestComment = pinComments[pinComments.length - 1];
