@@ -897,6 +897,8 @@ export default function ProjectCanvas() {
                     const pinComments = allComments[pin.id] || [];
                     const latestComment = pinComments[pinComments.length - 1];
                     const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
+                    const authorName = pin.author_name || 'Unknown';
+                    const realPageUrl = getRealUrl(pin.page_url);
                     
                     return (
                       <Card
@@ -915,7 +917,7 @@ export default function ProjectCanvas() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between mb-1">
-                              <span className="font-medium text-sm">Pin #{pinNumber}</span>
+                              <span className="font-medium text-sm">{authorName}</span>
                               <Badge variant={pin.status === 'resolved' ? 'secondary' : 'default'} className="text-xs">
                                 {pin.status}
                               </Badge>
@@ -927,9 +929,9 @@ export default function ProjectCanvas() {
                             ) : (
                               <p className="text-sm text-muted-foreground italic">No comments yet</p>
                             )}
-                            {pin.page_url && pin.page_url !== project.content_url && (
-                              <p className="text-xs text-muted-foreground mt-1 truncate">
-                                {getUrlPath(pin.page_url)}
+                            {realPageUrl && (
+                              <p className="text-xs text-muted-foreground mt-1 truncate" title={realPageUrl}>
+                                {new URL(realPageUrl).pathname || '/'}
                               </p>
                             )}
                           </div>
