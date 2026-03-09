@@ -370,6 +370,7 @@ export default function ProjectCanvas() {
 
     try {
       let response;
+      const deviceType = getCurrentDeviceType();
       
       if (user) {
         // Authenticated user - simple JSON request, screenshot captured in background
@@ -379,7 +380,8 @@ export default function ProjectCanvas() {
           y,
           page_url: normalizeUrl(currentPageUrl || project?.content_url),
           scroll_x: iframeScroll.x,
-          scroll_y: iframeScroll.y
+          scroll_y: iframeScroll.y,
+          device_type: deviceType
         }, { headers: getAuthHeaders() });
       } else {
         // Guest user - use guest endpoint
@@ -391,7 +393,8 @@ export default function ProjectCanvas() {
           scroll_x: iframeScroll.x,
           scroll_y: iframeScroll.y,
           guest_name: guestName,
-          guest_email: guestEmail
+          guest_email: guestEmail,
+          device_type: deviceType
         });
       }
       
@@ -404,7 +407,7 @@ export default function ProjectCanvas() {
       console.error('Failed to create pin:', error);
       toast.error(error.response?.data?.detail || 'Failed to create pin');
     }
-  }, [mode, user, guestName, guestEmail, id, currentPageUrl, project, iframeScroll, getAuthHeaders]);
+  }, [mode, user, guestName, guestEmail, id, currentPageUrl, project, iframeScroll, getAuthHeaders, getCurrentDeviceType]);
 
   const handleSubmitComment = useCallback(async () => {
     if (!newComment.trim() && !selectedFile) {
