@@ -153,6 +153,7 @@ class PinCreate(BaseModel):
     page_url: Optional[str] = None
     scroll_x: Optional[float] = 0
     scroll_y: Optional[float] = 0
+    device_type: str = "desktop"
 
 class Pin(BaseModel):
     model_config = ConfigDict(extra="ignore")
