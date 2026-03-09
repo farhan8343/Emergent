@@ -147,35 +147,6 @@ export default function Dashboard() {
     toast.success('Shareable link copied to clipboard!');
   };
 
-  const handleRefreshThumbnail = async (projectId, e) => {
-    e.stopPropagation();
-    
-    setRefreshingThumbnails(prev => ({ ...prev, [projectId]: true }));
-    
-    try {
-      const response = await axios.post(
-        `${API}/projects/${projectId}/refresh-thumbnail`,
-        {},
-        { headers: getAuthHeaders() }
-      );
-      
-      if (response.data.thumbnail_path) {
-        // Update the project in state with new thumbnail
-        setProjects(prev => prev.map(p => 
-          p.id === projectId 
-            ? { ...p, thumbnail_path: response.data.thumbnail_path }
-            : p
-        ));
-        toast.success('Thumbnail refreshed!');
-      }
-    } catch (error) {
-      console.error('Failed to refresh thumbnail:', error);
-      toast.error(error.response?.data?.detail || 'Failed to refresh thumbnail');
-    } finally {
-      setRefreshingThumbnails(prev => ({ ...prev, [projectId]: false }));
-    }
-  };
-
   const resetForm = () => {
     setProjectName('');
     setProjectType('url');
