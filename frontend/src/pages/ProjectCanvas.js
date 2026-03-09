@@ -1299,8 +1299,8 @@ export default function ProjectCanvas() {
                       />
                     )}
                     
-                    {/* Pins overlay - positioned based on scroll */}
-                    {visiblePins.map((pin) => {
+                    {/* Pins overlay - filtered by current page and device type */}
+                    {currentPagePins.map((pin) => {
                       const pinNumber = pins.findIndex(p => p.id === pin.id) + 1;
                       const pinStyle = getPinStyle(pin);
                       const pinComments = allComments[pin.id] || [];
