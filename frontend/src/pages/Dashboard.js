@@ -11,13 +11,34 @@ import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { Plus, FileText, Image, Globe, Trash2, Link2, Search, MessageSquare, CheckCircle, RefreshCw, Loader2 } from 'lucide-react';
+import { Plus, FileText, Image, Globe, Trash2, Link2, Search, MessageSquare, Bell } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
+// Helper function to format relative time
+const formatRelativeTime = (dateString) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffSeconds = Math.floor(diffMs / 1000);
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  const diffHours = Math.floor(diffMinutes / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  const diffMonths = Math.floor(diffDays / 30);
+  const diffYears = Math.floor(diffDays / 365);
+
+  if (diffYears > 0) return `${diffYears} year${diffYears > 1 ? 's' : ''} ago`;
+  if (diffMonths > 0) return `${diffMonths} month${diffMonths > 1 ? 's' : ''} ago`;
+  if (diffDays > 0) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+  if (diffHours > 0) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+  if (diffMinutes > 0) return `${diffMinutes} minute${diffMinutes > 1 ? 's' : ''} ago`;
+  return 'Just now';
+};
+
 export default function Dashboard() {
   const [projects, setProjects] = useState([]);
+  const [projectStats, setProjectStats] = useState({});
   const [team, setTeam] = useState(null);
   const [loading, setLoading] = useState(true);
   const [createMode, setCreateMode] = useState(false);
@@ -28,7 +49,6 @@ export default function Dashboard() {
   const [creating, setCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
-  const [refreshingThumbnails, setRefreshingThumbnails] = useState({});
   const { getAuthHeaders } = useAuth();
   const navigate = useNavigate();
 
@@ -44,6 +64,18 @@ export default function Dashboard() {
       ]);
       setProjects(projectsRes.data);
       setTeam(teamRes.data);
+      
+      // Fetch stats for each project
+      const stats = {};
+      for (const project of projectsRes.data) {
+        try {
+          const statsRes = await axios.get(`${API}/projects/${project.id}/stats`, { headers: getAuthHeaders() });
+          stats[project.id] = statsRes.data;
+        } catch (e) {
+          stats[project.id] = { open_pins: 0, total_comments: 0, has_new_activity: false };
+        }
+      }
+      setProjectStats(stats);
     } catch (error) {
       console.error('Failed to fetch data:', error);
       toast.error('Failed to load data');
