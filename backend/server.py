@@ -744,6 +744,8 @@ async def create_pin(
         'scroll_y': pin_data.scroll_y or 0,
         'status': 'open',
         'screenshot_path': None,
+        'device_type': pin_data.device_type,
+        'author_name': current_user.get('name', 'User'),
         'created_by': current_user['id'],
         'created_at': datetime.now(timezone.utc).isoformat()
     }
