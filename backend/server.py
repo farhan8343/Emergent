@@ -802,7 +802,8 @@ async def create_pin(
             pin_id,
             pin_data.page_url or project.get('content_url'),
             pin_data.scroll_y or 0,
-            current_user['team_id']
+            current_user['team_id'],
+            pin_data.device_type
         )
     
     return Pin(**pin)
@@ -878,7 +879,7 @@ async def create_pin_with_screenshot(
     
     return Pin(**pin)
 
-async def generate_pin_screenshot(pin_id: str, url: str, scroll_y: float, team_id: str):
+async def generate_pin_screenshot(pin_id: str, url: str, scroll_y: float, team_id: str, device_type: str = "desktop"):
     """Background task to capture screenshot for a pin using Playwright and mark pin location"""
     try:
         # Get pin data for coordinates
@@ -887,13 +888,18 @@ async def generate_pin_screenshot(pin_id: str, url: str, scroll_y: float, team_i
             logger.error(f"Pin {pin_id} not found for screenshot")
             return
         
+        # Match viewport width to device type
+        viewport_widths = {'desktop': 1920, 'tablet': 768, 'mobile': 375}
+        vp_width = viewport_widths.get(device_type, 1920)
+        vp_height = 1080 if device_type == 'desktop' else 1024 if device_type == 'tablet' else 812
+        
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
                 args=['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-dev-shm-usage']
             )
             context = await browser.new_context(
-                viewport={'width': 1200, 'height': 800},
+                viewport={'width': vp_width, 'height': vp_height},
                 user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             )
             page = await context.new_page()
@@ -1025,7 +1031,8 @@ async def create_guest_pin(
             pin_id, 
             pin_data.page_url or project.get('content_url'),
             pin_data.scroll_y or 0,
-            project.get('team_id')
+            project.get('team_id'),
+            pin_data.device_type
         )
     
     return Pin(**pin)
@@ -1050,6 +1057,22 @@ async def get_pins(
     pins = await db.pins.find(query, {'_id': 0}).to_list(1000)
     return [Pin(**p) for p in pins]
 
+@api_router.delete("/pins/{pin_id}")
+async def delete_pin(pin_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete a pin and its associated comments"""
+    pin = await db.pins.find_one({'id': pin_id}, {'_id': 0})
+    if not pin:
+        raise HTTPException(status_code=404, detail='Pin not found')
+    
+    project = await db.projects.find_one({'id': pin['project_id']}, {'_id': 0})
+    if not project or project.get('team_id') != current_user.get('team_id'):
+        raise HTTPException(status_code=403, detail='Not authorized to delete this pin')
+    
+    await db.comments.delete_many({'pin_id': pin_id})
+    await db.pins.delete_one({'id': pin_id})
+    
+    return {'message': 'Pin deleted successfully'}
+
 @api_router.put("/pins/{pin_id}/status")
 async def update_pin_status(pin_id: str, new_status: str, current_user: dict = Depends(get_current_user)):
     if new_status not in ['open', 'resolved']:
@@ -1064,6 +1087,14 @@ async def update_pin_status(pin_id: str, new_status: str, current_user: dict = D
         raise HTTPException(status_code=404, detail='Pin not found')
     
     return {'message': 'Pin status updated'}
+
+@api_router.get("/pins/{pin_id}/screenshot")
+async def get_pin_screenshot_status(pin_id: str):
+    """Check if a pin's screenshot is ready"""
+    pin = await db.pins.find_one({'id': pin_id}, {'_id': 0, 'screenshot_path': 1})
+    if not pin:
+        raise HTTPException(status_code=404, detail='Pin not found')
+    return {'screenshot_path': pin.get('screenshot_path')}
 
 # Project Pages endpoint - get unique page URLs with comments
 @api_router.get("/projects/{project_id}/pages")
@@ -1641,6 +1672,29 @@ def rewrite_html(html_content: str, base_url: str, project_id: str = None) -> st
     for tag in soup.find_all('iframe', src=True):
         if not tag['src'].startswith('data:'):
             tag['src'] = create_proxy_url(tag['src'], base_url)
+    # Remove sandbox attributes from iframes to allow embeds
+    for tag in soup.find_all('iframe'):
+        if tag.get('sandbox'):
+            del tag['sandbox']
+    
+    # Rewrite data-src, data-lazy-src (lazy loading / carousels)
+    for attr in ['data-src', 'data-lazy-src', 'data-original', 'data-bg']:
+        for tag in soup.find_all(attrs={attr: True}):
+            val = tag[attr]
+            if val and not val.startswith('data:') and not val.startswith('#'):
+                tag[attr] = create_proxy_url(val, base_url)
+    
+    # Rewrite data-srcset for lazy-loaded images
+    for tag in soup.find_all(attrs={'data-srcset': True}):
+        srcset_parts = []
+        for part in tag['data-srcset'].split(','):
+            part = part.strip()
+            if ' ' in part:
+                url, descriptor = part.rsplit(' ', 1)
+                srcset_parts.append(f"{create_proxy_url(url.strip(), base_url)} {descriptor}")
+            else:
+                srcset_parts.append(create_proxy_url(part, base_url))
+        tag['data-srcset'] = ', '.join(srcset_parts)
     
     # Rewrite <object> data attributes
     for tag in soup.find_all('object', data=True):
@@ -1675,6 +1729,14 @@ def rewrite_html(html_content: str, base_url: str, project_id: str = None) -> st
         # Remove any existing base tag
         for existing_base in head.find_all('base'):
             existing_base.decompose()
+        
+        # Add base tag pointing to proxy for remaining relative resources
+        base_tag = soup.new_tag('base', href=f'/api/proxy?url={quote(base_url + "/", safe="")}')
+        head.insert(0, base_tag)
+    
+    # Remove meta CSP tags that block iframes/embeds
+    for meta in soup.find_all('meta', attrs={'http-equiv': re.compile('content-security-policy', re.I)}):
+        meta.decompose()
     
     # Inject annotation script at the end of body
     body = soup.find('body')
@@ -1780,25 +1842,59 @@ async def proxy_page(url: str = Query(..., description="URL to proxy"), project_
         is_asset = any(path_lower.endswith(ext) for ext in [
             '.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', 
             '.ico', '.woff', '.woff2', '.ttf', '.eot', '.otf', '.mp4', '.webm',
-            '.pdf', '.zip', '.json', '.xml'
+            '.pdf', '.zip', '.xml', '.map'
         ])
+        
+        # Also check query-less paths and content-type hints
+        if not is_asset and not path_lower.endswith('.json'):
+            # Check if URL has common API patterns
+            is_asset = any(seg in path_lower for seg in ['/wp-json/', '/api/', '/feed/'])
         
         if is_asset:
             # Use simple HTTP client for assets (faster)
             http_client = await get_http_client()
-            response = await http_client.get(target_url)
+            try:
+                response = await http_client.get(target_url)
+            except Exception:
+                return Response(content=b'', status_code=204)
             content_type = response.headers.get('content-type', '').lower()
             
+            # Rewrite CSS urls
             if 'text/css' in content_type:
                 css_content = response.text
                 rewritten_css = rewrite_css_urls(css_content, base_url)
-                return Response(content=rewritten_css, status_code=200, media_type='text/css')
+                return Response(content=rewritten_css, status_code=200, media_type='text/css',
+                    headers={'Access-Control-Allow-Origin': '*'})
+            
+            # Rewrite JS that might contain absolute URLs
+            if 'javascript' in content_type or 'text/js' in content_type:
+                return Response(
+                    content=response.content,
+                    status_code=response.status_code,
+                    media_type=content_type.split(';')[0],
+                    headers={'Access-Control-Allow-Origin': '*'}
+                )
             
             return Response(
                 content=response.content,
                 status_code=response.status_code,
-                media_type=content_type.split(';')[0] if content_type else 'application/octet-stream'
+                media_type=content_type.split(';')[0] if content_type else 'application/octet-stream',
+                headers={'Access-Control-Allow-Origin': '*'}
             )
+        
+        # JSON API requests - proxy directly without Playwright
+        if path_lower.endswith('.json') or 'json' in parsed.query.lower():
+            http_client = await get_http_client()
+            try:
+                response = await http_client.get(target_url)
+                return Response(
+                    content=response.content,
+                    status_code=response.status_code,
+                    media_type=response.headers.get('content-type', 'application/json').split(';')[0],
+                    headers={'Access-Control-Allow-Origin': '*'}
+                )
+            except Exception:
+                return Response(content=b'{}', status_code=200, media_type='application/json')
         
         # Use Playwright for HTML pages (handles Cloudflare challenges)
         browser = await get_browser()
@@ -1811,8 +1907,13 @@ async def proxy_page(url: str = Query(..., description="URL to proxy"), project_
             # Navigate to the page and wait for it to load
             response = await page.goto(target_url, wait_until='domcontentloaded', timeout=30000)
             
-            # Wait a bit for any JavaScript to execute
-            await page.wait_for_timeout(1000)
+            # Wait longer for JS to execute (carousels, embeds, dynamic content)
+            try:
+                await page.wait_for_load_state('networkidle', timeout=8000)
+            except Exception:
+                pass
+            # Extra wait for late-loading widgets
+            await page.wait_for_timeout(1500)
             
             # Get the page content after JavaScript execution
             html_content = await page.content()
@@ -1830,6 +1931,8 @@ async def proxy_page(url: str = Query(..., description="URL to proxy"), project_
                 headers={
                     'Content-Type': 'text/html; charset=utf-8',
                     'X-Proxied-URL': final_url,
+                    'X-Frame-Options': '',
+                    'Content-Security-Policy': '',
                 }
             )
         finally:

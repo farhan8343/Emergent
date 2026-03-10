@@ -7,18 +7,22 @@ import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
-import { ScrollArea } from '../components/ui/scroll-area';
 import { Switch } from '../components/ui/switch';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { toast } from 'sonner';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
 import { 
   ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, 
   Share2, Eye, MessageCircle, Search, ArrowUpDown, ChevronLeft, 
-  Paperclip, ExternalLink, Loader2, Globe, Camera, PauseCircle, PlayCircle
+  Paperclip, ExternalLink, Loader2, Globe, Camera, PauseCircle, PlayCircle,
+  Trash2
 } from 'lucide-react';
+
+dayjs.extend(relativeTime);
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -77,6 +81,7 @@ export default function ProjectCanvas() {
   const [lightboxImage, setLightboxImage] = useState(null);
   const [isPageLoading, setIsPageLoading] = useState(false);
   const [isNavigatingToPin, setIsNavigatingToPin] = useState(false);
+  const [screenshotLoading, setScreenshotLoading] = useState({});
   
   // Mention state
   const [showMentions, setShowMentions] = useState(false);
@@ -420,6 +425,10 @@ export default function ProjectCanvas() {
       setSelectedPin(newPin);
       setSidebarView('thread');
       toast.success('Pin created! Add your comment.');
+      // Start polling for screenshot
+      if (!newPin.screenshot_path) {
+        pollScreenshot(newPin.id);
+      }
     } catch (error) {
       console.error('Failed to create pin:', error);
       toast.error(error.response?.data?.detail || 'Failed to create pin');
@@ -565,6 +574,58 @@ export default function ProjectCanvas() {
       toast.error('Failed to update pin status');
     }
   }, [selectedPin, user, getAuthHeaders]);
+
+  const handleDeletePin = useCallback(async (pinToDelete) => {
+    if (!pinToDelete || !user) return;
+    if (!window.confirm('Delete this pin and all its comments?')) return;
+    
+    try {
+      await axios.delete(`${API}/pins/${pinToDelete.id}`, { headers: getAuthHeaders() });
+      setPins(prev => prev.filter(p => p.id !== pinToDelete.id));
+      setAllComments(prev => {
+        const next = { ...prev };
+        delete next[pinToDelete.id];
+        return next;
+      });
+      if (selectedPin?.id === pinToDelete.id) {
+        setSelectedPin(null);
+        setSidebarView('overview');
+      }
+      toast.success('Pin deleted');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to delete pin');
+    }
+  }, [user, getAuthHeaders, selectedPin]);
+
+  // Poll for screenshot readiness after pin creation
+  const pollScreenshot = useCallback(async (pinId) => {
+    setScreenshotLoading(prev => ({ ...prev, [pinId]: true }));
+    let attempts = 0;
+    const maxAttempts = 20;
+    
+    const poll = async () => {
+      attempts++;
+      try {
+        const res = await axios.get(`${API}/pins/${pinId}/screenshot`);
+        if (res.data.screenshot_path) {
+          setPins(prev => prev.map(p => 
+            p.id === pinId ? { ...p, screenshot_path: res.data.screenshot_path } : p
+          ));
+          if (selectedPin?.id === pinId) {
+            setSelectedPin(prev => prev ? { ...prev, screenshot_path: res.data.screenshot_path } : prev);
+          }
+          setScreenshotLoading(prev => ({ ...prev, [pinId]: false }));
+          return;
+        }
+      } catch {}
+      if (attempts < maxAttempts) {
+        setTimeout(poll, 2000);
+      } else {
+        setScreenshotLoading(prev => ({ ...prev, [pinId]: false }));
+      }
+    };
+    poll();
+  }, [selectedPin]);
 
   const handlePinClick = useCallback((pin, e) => {
     e?.stopPropagation();
@@ -825,7 +886,7 @@ export default function ProjectCanvas() {
       
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar - LEFT SIDE - ALWAYS VISIBLE */}
-        <div className="w-96 border-r bg-card flex flex-col flex-shrink-0 order-first" data-testid="comments-sidebar">
+        <div className="w-96 border-r bg-card flex flex-col flex-shrink-0 order-first h-[calc(100vh-64px)]" data-testid="comments-sidebar">
           {/* Sidebar Header */}
           <div className="p-4 border-b flex-shrink-0">
             <div className="flex items-center justify-between mb-4">
@@ -905,8 +966,8 @@ export default function ProjectCanvas() {
             )}
           </div>
 
-          {/* Comments List */}
-          <ScrollArea className="flex-1">
+          {/* Comments List - scrollable */}
+          <div className="flex-1 overflow-y-auto min-h-0" style={{ willChange: 'transform' }}>
             <div className="p-4 space-y-3">
               {sidebarView === 'overview' ? (
                 visiblePins.length > 0 ? (
@@ -926,18 +987,21 @@ export default function ProjectCanvas() {
                         onClick={() => handlePinClick(pin)}
                         data-testid={`pin-card-${pin.id}`}
                       >
-                        <div className="flex items-start space-x-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0 ${
+                        <div className="flex items-start space-x-2">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${
                             pin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
                           }`}>
-                            {pin.status === 'resolved' ? <Check className="w-4 h-4" /> : pinNumber}
+                            {pin.status === 'resolved' ? <Check className="w-3 h-3" /> : pinNumber}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between mb-1">
                               <span className="font-medium text-sm">{authorName}</span>
-                              <Badge variant={pin.status === 'resolved' ? 'secondary' : 'default'} className="text-xs">
-                                {pin.status}
-                              </Badge>
+                              <div className="flex items-center space-x-1">
+                                <span className="text-xs text-muted-foreground">{dayjs(pin.created_at).fromNow()}</span>
+                                <Badge variant={pin.status === 'resolved' ? 'secondary' : 'default'} className="text-[10px] px-1.5 py-0">
+                                  {pin.status}
+                                </Badge>
+                              </div>
                             </div>
                             {latestComment ? (
                               <p className="text-sm text-muted-foreground truncate">
@@ -946,11 +1010,14 @@ export default function ProjectCanvas() {
                             ) : (
                               <p className="text-sm text-muted-foreground italic">No comments yet</p>
                             )}
-                            {realPageUrl && (
-                              <p className="text-xs text-muted-foreground mt-1 truncate" title={realPageUrl}>
-                                {new URL(realPageUrl).pathname || '/'}
-                              </p>
-                            )}
+                            <div className="flex items-center justify-between mt-1">
+                              {realPageUrl && (
+                                <p className="text-xs text-muted-foreground truncate max-w-[180px]" title={realPageUrl}>
+                                  {new URL(realPageUrl).pathname || '/'}
+                                </p>
+                              )}
+                              <span className="text-xs text-muted-foreground">{pinComments.length} comment{pinComments.length !== 1 ? 's' : ''}</span>
+                            </div>
                           </div>
                         </div>
                       </Card>
@@ -968,18 +1035,31 @@ export default function ProjectCanvas() {
                 <div className="space-y-4">
                   {selectedPin && (
                     <>
-                      <div className="flex items-center space-x-3 pb-3 border-b">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
+                      <div className="flex items-center space-x-2 pb-3 border-b">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${
                           selectedPin.status === 'resolved' ? 'bg-green-500' : 'bg-accent'
                         }`}>
-                          {selectedPin.status === 'resolved' ? <Check className="w-5 h-5" /> : pins.findIndex(p => p.id === selectedPin.id) + 1}
+                          {selectedPin.status === 'resolved' ? <Check className="w-3.5 h-3.5" /> : pins.findIndex(p => p.id === selectedPin.id) + 1}
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between">
-                            <span className="font-medium">Pin #{pins.findIndex(p => p.id === selectedPin.id) + 1}</span>
-                            <Badge variant={selectedPin.status === 'resolved' ? 'secondary' : 'default'}>
-                              {selectedPin.status}
-                            </Badge>
+                            <span className="font-medium text-sm">{selectedPin.author_name || 'Unknown'}</span>
+                            <div className="flex items-center space-x-1">
+                              <Badge variant={selectedPin.status === 'resolved' ? 'secondary' : 'default'} className="text-[10px] px-1.5 py-0">
+                                {selectedPin.status}
+                              </Badge>
+                              {user && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                  onClick={(e) => { e.stopPropagation(); handleDeletePin(selectedPin); }}
+                                  data-testid="delete-pin-btn"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
                           {selectedPin.page_url && (
                             <p className="text-xs text-muted-foreground truncate">
@@ -989,16 +1069,24 @@ export default function ProjectCanvas() {
                         </div>
                       </div>
 
-                      {/* Pin Screenshot - Click to open lightbox */}
-                      {selectedPin.screenshot_path && (
-                        <button
-                          onClick={() => setLightboxImage(`${BACKEND_URL}/api/files/screenshots/${selectedPin.screenshot_path.split('/').pop()}`)}
-                          className="flex items-center space-x-2 text-sm text-accent hover:text-accent/80 hover:underline mb-3"
-                        >
-                          <Camera className="w-4 h-4" />
-                          <span>View Screenshot</span>
-                        </button>
-                      )}
+                      {/* Pin Screenshot */}
+                      <div className="flex items-center space-x-2">
+                        {selectedPin.screenshot_path ? (
+                          <button
+                            onClick={() => setLightboxImage(`${BACKEND_URL}/api/files/screenshots/${selectedPin.screenshot_path.split('/').pop()}`)}
+                            className="inline-flex items-center space-x-1.5 text-xs bg-accent/10 text-accent hover:bg-accent/20 rounded-md px-2.5 py-1.5 transition-colors"
+                            data-testid="view-screenshot-btn"
+                          >
+                            <Camera className="w-3.5 h-3.5" />
+                            <span>View Screenshot</span>
+                          </button>
+                        ) : screenshotLoading[selectedPin.id] ? (
+                          <span className="inline-flex items-center space-x-1.5 text-xs text-muted-foreground bg-secondary/50 rounded-md px-2.5 py-1.5">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Capturing...</span>
+                          </span>
+                        ) : null}
+                      </div>
 
                       {/* Resolve Button */}
                       {user && (
@@ -1021,7 +1109,7 @@ export default function ProjectCanvas() {
                               <div className="flex items-center justify-between mb-2">
                                 <span className="font-medium text-sm">{comment.author_name}</span>
                                 <span className="text-xs text-muted-foreground">
-                                  {new Date(comment.created_at).toLocaleDateString()}
+                                  {dayjs(comment.created_at).fromNow()}
                                 </span>
                               </div>
                               <p className="text-sm whitespace-pre-wrap">
@@ -1051,10 +1139,10 @@ export default function ProjectCanvas() {
                 </div>
               )}
             </div>
-          </ScrollArea>
+          </div>
 
-          {/* Comment Input */}
-          <div className="p-4 border-t flex-shrink-0">
+          {/* Comment Input - sticky at bottom */}
+          <div className="p-3 border-t flex-shrink-0 bg-card">
             <div className="space-y-3">
               {/* Mention Dropdown */}
               {showMentions && (
