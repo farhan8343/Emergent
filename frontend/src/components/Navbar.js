@@ -24,6 +24,15 @@ export const Navbar = () => {
     if (storedName && !user) {
       setGuestName(storedName);
     }
+    
+    // Listen for guest updates from ProjectCanvas
+    const handleGuestUpdate = (e) => {
+      if (e.detail?.name) {
+        setGuestName(e.detail.name);
+      }
+    };
+    window.addEventListener('markuply_guest_update', handleGuestUpdate);
+    return () => window.removeEventListener('markuply_guest_update', handleGuestUpdate);
   }, [user]);
 
   const handleLogout = () => {

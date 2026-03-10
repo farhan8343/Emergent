@@ -154,6 +154,8 @@ class PinCreate(BaseModel):
     scroll_x: Optional[float] = 0
     scroll_y: Optional[float] = 0
     device_type: str = "desktop"
+    canvas_width: Optional[int] = None
+    canvas_height: Optional[int] = None
 
 class Pin(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -803,7 +805,9 @@ async def create_pin(
             pin_data.page_url or project.get('content_url'),
             pin_data.scroll_y or 0,
             current_user['team_id'],
-            pin_data.device_type
+            pin_data.device_type,
+            pin_data.canvas_width,
+            pin_data.canvas_height
         )
     
     return Pin(**pin)
@@ -879,7 +883,7 @@ async def create_pin_with_screenshot(
     
     return Pin(**pin)
 
-async def generate_pin_screenshot(pin_id: str, url: str, scroll_y: float, team_id: str, device_type: str = "desktop"):
+async def generate_pin_screenshot(pin_id: str, url: str, scroll_y: float, team_id: str, device_type: str = "desktop", canvas_width: int = None, canvas_height: int = None):
     """Background task to capture screenshot for a pin using Playwright and mark pin location"""
     try:
         # Get pin data for coordinates
@@ -888,10 +892,17 @@ async def generate_pin_screenshot(pin_id: str, url: str, scroll_y: float, team_i
             logger.error(f"Pin {pin_id} not found for screenshot")
             return
         
-        # Match viewport width to device type
-        viewport_widths = {'desktop': 1920, 'tablet': 768, 'mobile': 375}
-        vp_width = viewport_widths.get(device_type, 1920)
-        vp_height = 1080 if device_type == 'desktop' else 1024 if device_type == 'tablet' else 812
+        # Use canvas dimensions if provided, otherwise use device defaults
+        if canvas_width and canvas_width > 100:
+            vp_width = canvas_width
+        else:
+            viewport_widths = {'desktop': 1920, 'tablet': 768, 'mobile': 375}
+            vp_width = viewport_widths.get(device_type, 1920)
+        
+        if canvas_height and canvas_height > 100:
+            vp_height = canvas_height
+        else:
+            vp_height = 800  # Match default iframe height
         
         async with async_playwright() as p:
             browser = await p.chromium.launch(
@@ -990,6 +1001,8 @@ class GuestPinCreate(BaseModel):
     guest_name: str
     guest_email: str
     device_type: str = "desktop"
+    canvas_width: Optional[int] = None
+    canvas_height: Optional[int] = None
 
 @api_router.post("/pins/guest", response_model=Pin)
 async def create_guest_pin(
@@ -1032,7 +1045,9 @@ async def create_guest_pin(
             pin_data.page_url or project.get('content_url'),
             pin_data.scroll_y or 0,
             project.get('team_id'),
-            pin_data.device_type
+            pin_data.device_type,
+            pin_data.canvas_width,
+            pin_data.canvas_height
         )
     
     return Pin(**pin)
@@ -1095,6 +1110,34 @@ async def get_pin_screenshot_status(pin_id: str):
     if not pin:
         raise HTTPException(status_code=404, detail='Pin not found')
     return {'screenshot_path': pin.get('screenshot_path')}
+
+@api_router.get("/projects/{project_id}/members")
+async def get_project_members(project_id: str):
+    """Get unique commenters/contributors for a project"""
+    # Get all pins for this project
+    pin_cursor = db.pins.find({'project_id': project_id}, {'_id': 0, 'id': 1, 'author_name': 1, 'created_by': 1})
+    pins_list = await pin_cursor.to_list(500)
+    
+    # Get all comments for these pins
+    pin_ids = [p['id'] for p in pins_list]
+    comment_cursor = db.comments.find({'pin_id': {'$in': pin_ids}}, {'_id': 0, 'author_name': 1, 'author_id': 1, 'guest_email': 1})
+    comments_list = await comment_cursor.to_list(2000)
+    
+    # Build unique members set
+    members = {}
+    for pin in pins_list:
+        name = pin.get('author_name', 'Unknown')
+        key = pin.get('created_by', name)
+        if key not in members:
+            members[key] = {'name': name, 'type': 'team' if pin.get('created_by') else 'guest'}
+    
+    for comment in comments_list:
+        name = comment.get('author_name', 'Unknown')
+        key = comment.get('author_id') or comment.get('guest_email') or name
+        if key not in members:
+            members[key] = {'name': name, 'type': 'team' if comment.get('author_id') else 'guest'}
+    
+    return list(members.values())
 
 # Project Pages endpoint - get unique page URLs with comments
 @api_router.get("/projects/{project_id}/pages")
@@ -1799,6 +1842,43 @@ def rewrite_html(html_content: str, base_url: str, project_id: str = None) -> st
                     title: document.title
                 }}, '*');
             }}
+            
+            // Report scroll position to parent
+            var lastReportedScroll = 0;
+            window.addEventListener('scroll', function() {{
+                var now = Date.now();
+                if (now - lastReportedScroll > 100) {{
+                    lastReportedScroll = now;
+                    if (window.parent !== window) {{
+                        window.parent.postMessage({{
+                            type: 'MARKUPLY_SCROLL',
+                            scrollX: window.scrollX || window.pageXOffset || 0,
+                            scrollY: window.scrollY || window.pageYOffset || 0
+                        }}, '*');
+                    }}
+                }}
+            }}, {{ passive: true }});
+            
+            // Trigger lazy-loaded images and scroll animations
+            setTimeout(function() {{
+                // Force all lazy images to load
+                document.querySelectorAll('img[data-src], img[data-lazy-src]').forEach(function(img) {{
+                    var src = img.getAttribute('data-src') || img.getAttribute('data-lazy-src');
+                    if (src) img.src = src;
+                }});
+                
+                // Trigger intersection observers by scrolling
+                window.dispatchEvent(new Event('scroll'));
+                window.dispatchEvent(new Event('resize'));
+                
+                // Make all elements visible (some sites hide until scroll)
+                document.querySelectorAll('[data-aos], .wow, .animate-on-scroll').forEach(function(el) {{
+                    el.style.opacity = '1';
+                    el.style.transform = 'none';
+                    el.style.visibility = 'visible';
+                    el.classList.add('aos-animate', 'animated');
+                }});
+            }}, 1500);
         }})();
         '''
         body.append(annotation_script)

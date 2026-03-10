@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
@@ -19,7 +19,7 @@ import {
   ArrowLeft, Check, MessageSquare, X, Monitor, Tablet, Smartphone, 
   Share2, Eye, MessageCircle, Search, ArrowUpDown, ChevronLeft, 
   Paperclip, ExternalLink, Loader2, Globe, Camera, PauseCircle, PlayCircle,
-  Trash2
+  Trash2, Link2, Users
 } from 'lucide-react';
 
 dayjs.extend(relativeTime);
@@ -41,6 +41,7 @@ const normalizeUrl = (url) => {
 export default function ProjectCanvas() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, getAuthHeaders } = useAuth();
   
   // Core state
@@ -87,6 +88,7 @@ export default function ProjectCanvas() {
   const [showMentions, setShowMentions] = useState(false);
   const [mentionSearch, setMentionSearch] = useState('');
   const [projectUsers, setProjectUsers] = useState([]);
+  const [projectMembers, setProjectMembers] = useState([]);
   
   // Refs
   const canvasRef = useRef(null);
@@ -185,6 +187,13 @@ export default function ProjectCanvas() {
     } catch (error) {
       setProjectUsers([]);
     }
+    // Also fetch members (works for guests too)
+    try {
+      const membersRes = await axios.get(`${API}/projects/${id}/members`);
+      setProjectMembers(membersRes.data || []);
+    } catch {
+      setProjectMembers([]);
+    }
   }, [id]);
 
   // ==================== EFFECTS ====================
@@ -207,6 +216,18 @@ export default function ProjectCanvas() {
       fetchAllComments();
     }
   }, [pins.length, fetchAllComments]);
+
+  // Auto-select pin from URL query param (?pin=xxx)
+  useEffect(() => {
+    const pinId = searchParams.get('pin');
+    if (pinId && pins.length > 0) {
+      const pin = pins.find(p => p.id === pinId);
+      if (pin) {
+        setSelectedPin(pin);
+        setSidebarView('thread');
+      }
+    }
+  }, [pins, searchParams]);
 
   useEffect(() => {
     if (selectedPin?.id) {
@@ -385,6 +406,8 @@ export default function ProjectCanvas() {
     // Calculate position as percentage of canvas viewport
     const x = ((e.clientX - canvasRect.left) / canvasRect.width) * 100;
     const y = ((e.clientY - canvasRect.top) / canvasRect.height) * 100;
+    const canvasWidth = Math.round(canvasRect.width);
+    const canvasHeight = Math.round(canvasRect.height);
 
     if (x < 0 || x > 100 || y < 0 || y > 100) {
       return;
@@ -403,7 +426,9 @@ export default function ProjectCanvas() {
           page_url: normalizeUrl(currentPageUrl || project?.content_url),
           scroll_x: iframeScroll.x,
           scroll_y: iframeScroll.y,
-          device_type: deviceType
+          device_type: deviceType,
+          canvas_width: canvasWidth,
+          canvas_height: canvasHeight
         }, { headers: getAuthHeaders() });
       } else {
         // Guest user - use guest endpoint
@@ -416,7 +441,9 @@ export default function ProjectCanvas() {
           scroll_y: iframeScroll.y,
           guest_name: guestName,
           guest_email: guestEmail,
-          device_type: deviceType
+          device_type: deviceType,
+          canvas_width: canvasWidth,
+          canvas_height: canvasHeight
         });
       }
       
@@ -528,6 +555,7 @@ export default function ProjectCanvas() {
       }
 
       toast.success('Comment added!');
+      fetchProjectUsers(); // Refresh members list
       
     } catch (error) {
       // Remove optimistic comment on error
@@ -598,34 +626,34 @@ export default function ProjectCanvas() {
   }, [user, getAuthHeaders, selectedPin]);
 
   // Poll for screenshot readiness after pin creation
-  const pollScreenshot = useCallback(async (pinId) => {
+  const pollScreenshot = useCallback((pinId) => {
     setScreenshotLoading(prev => ({ ...prev, [pinId]: true }));
     let attempts = 0;
-    const maxAttempts = 20;
+    const maxAttempts = 30;
     
-    const poll = async () => {
+    const poll = () => {
       attempts++;
-      try {
-        const res = await axios.get(`${API}/pins/${pinId}/screenshot`);
+      axios.get(`${API}/pins/${pinId}/screenshot`).then(res => {
         if (res.data.screenshot_path) {
           setPins(prev => prev.map(p => 
             p.id === pinId ? { ...p, screenshot_path: res.data.screenshot_path } : p
           ));
-          if (selectedPin?.id === pinId) {
-            setSelectedPin(prev => prev ? { ...prev, screenshot_path: res.data.screenshot_path } : prev);
-          }
+          setSelectedPin(prev => {
+            if (prev?.id === pinId) return { ...prev, screenshot_path: res.data.screenshot_path };
+            return prev;
+          });
           setScreenshotLoading(prev => ({ ...prev, [pinId]: false }));
           return;
         }
-      } catch {}
-      if (attempts < maxAttempts) {
-        setTimeout(poll, 2000);
-      } else {
-        setScreenshotLoading(prev => ({ ...prev, [pinId]: false }));
-      }
+        if (attempts < maxAttempts) setTimeout(poll, 2000);
+        else setScreenshotLoading(prev => ({ ...prev, [pinId]: false }));
+      }).catch(() => {
+        if (attempts < maxAttempts) setTimeout(poll, 2000);
+        else setScreenshotLoading(prev => ({ ...prev, [pinId]: false }));
+      });
     };
-    poll();
-  }, [selectedPin]);
+    setTimeout(poll, 3000); // Initial delay for screenshot to generate
+  }, []);
 
   const handlePinClick = useCallback((pin, e) => {
     e?.stopPropagation();
@@ -711,12 +739,41 @@ export default function ProjectCanvas() {
   }, [newComment]);
 
   const filteredMentionUsers = useMemo(() => {
-    if (!mentionSearch) return projectUsers.slice(0, 5);
-    return projectUsers
-      .filter(u => u.name?.toLowerCase().includes(mentionSearch) || 
-                   u.email?.toLowerCase().includes(mentionSearch))
-      .slice(0, 5);
-  }, [projectUsers, mentionSearch]);
+    // Build a combined list of mentionable users from project users AND all commenters
+    const usersMap = new Map();
+    
+    // Add project team users
+    projectUsers.forEach(u => {
+      usersMap.set(u.id || u.email, { id: u.id, name: u.name, email: u.email });
+    });
+    
+    // Add all unique commenters from comments
+    Object.values(allComments).forEach(commentList => {
+      commentList.forEach(c => {
+        const key = c.author_id || c.guest_email || c.author_name;
+        if (key && !usersMap.has(key)) {
+          usersMap.set(key, { id: c.author_id || key, name: c.author_name, email: c.guest_email });
+        }
+      });
+    });
+    
+    // Add pin authors
+    pins.forEach(p => {
+      const key = p.created_by || p.author_name;
+      if (key && !usersMap.has(key)) {
+        usersMap.set(key, { id: p.created_by || key, name: p.author_name });
+      }
+    });
+    
+    let users = Array.from(usersMap.values());
+    if (mentionSearch) {
+      users = users.filter(u => 
+        u.name?.toLowerCase().includes(mentionSearch) || 
+        u.email?.toLowerCase().includes(mentionSearch)
+      );
+    }
+    return users.slice(0, 5);
+  }, [projectUsers, allComments, pins, mentionSearch]);
 
   // Parse mentions in comment text for display
   const renderCommentText = useCallback((text) => {
@@ -740,9 +797,19 @@ export default function ProjectCanvas() {
   }, []);
 
   const handleShare = useCallback(() => {
-    const shareUrl = `${window.location.origin}/project/${id}`;
+    // Share link with current pin if one is selected
+    let shareUrl = `${window.location.origin}/project/${id}`;
+    if (selectedPin) {
+      shareUrl += `?pin=${selectedPin.id}`;
+    }
     navigator.clipboard.writeText(shareUrl);
     toast.success('Share link copied to clipboard');
+  }, [id, selectedPin]);
+
+  const handleSharePin = useCallback((pinId) => {
+    const shareUrl = `${window.location.origin}/project/${id}?pin=${pinId}`;
+    navigator.clipboard.writeText(shareUrl);
+    toast.success('Pin link copied!');
   }, [id]);
 
   const handleToggleComments = useCallback(async () => {
@@ -769,8 +836,9 @@ export default function ProjectCanvas() {
       localStorage.setItem('markuply_guest_name', guestName);
       localStorage.setItem('markuply_guest_email', guestEmail);
       setShowGuestDialog(false);
+      // Dispatch event for Navbar to update dynamically
+      window.dispatchEvent(new CustomEvent('markuply_guest_update', { detail: { name: guestName } }));
       if (isGuest) {
-        // Retry fetching project with guest credentials
         fetchProject();
       }
     } else {
@@ -886,7 +954,7 @@ export default function ProjectCanvas() {
       
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar - LEFT SIDE - ALWAYS VISIBLE */}
-        <div className="w-96 border-r bg-card flex flex-col flex-shrink-0 order-first h-[calc(100vh-64px)]" data-testid="comments-sidebar">
+        <div className="w-80 border-r bg-card flex flex-col flex-shrink-0 order-first h-[calc(100vh-64px)]" data-testid="comments-sidebar">
           {/* Sidebar Header */}
           <div className="p-4 border-b flex-shrink-0">
             <div className="flex items-center justify-between mb-4">
@@ -967,7 +1035,7 @@ export default function ProjectCanvas() {
           </div>
 
           {/* Comments List - scrollable */}
-          <div className="flex-1 overflow-y-auto min-h-0" style={{ willChange: 'transform' }}>
+          <div className="flex-1 overflow-y-auto min-h-0" style={{ contain: 'strict', willChange: 'scroll-position' }}>
             <div className="p-4 space-y-3">
               {sidebarView === 'overview' ? (
                 visiblePins.length > 0 ? (
@@ -1059,6 +1127,16 @@ export default function ProjectCanvas() {
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </Button>
                               )}
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                                onClick={(e) => { e.stopPropagation(); handleSharePin(selectedPin.id); }}
+                                data-testid="share-pin-btn"
+                                title="Copy pin link"
+                              >
+                                <Link2 className="w-3.5 h-3.5" />
+                              </Button>
                             </div>
                           </div>
                           {selectedPin.page_url && (
@@ -1145,25 +1223,18 @@ export default function ProjectCanvas() {
           <div className="p-3 border-t flex-shrink-0 bg-card">
             <div className="space-y-3">
               {/* Mention Dropdown */}
-              {showMentions && (
+              {showMentions && filteredMentionUsers.length > 0 && (
                 <div className="bg-popover border rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                  {projectUsers
-                    .filter(u => u.name.toLowerCase().includes(mentionSearch.toLowerCase()))
-                    .map(user => (
-                      <button
-                        key={user.id}
-                        className="w-full px-3 py-2 text-left hover:bg-secondary/50 text-sm"
-                        onClick={() => {
-                          const mention = `@[${user.name}](user:${user.id})`;
-                          const beforeMention = newComment.substring(0, newComment.lastIndexOf('@'));
-                          setNewComment(beforeMention + mention + ' ');
-                          setShowMentions(false);
-                          commentInputRef.current?.focus();
-                        }}
-                      >
-                        {user.name}
-                      </button>
-                    ))}
+                  {filteredMentionUsers.map((mu, idx) => (
+                    <button
+                      key={mu.id || idx}
+                      className="w-full px-3 py-2 text-left hover:bg-secondary/50 text-sm"
+                      onClick={() => handleMentionSelect(mu)}
+                    >
+                      {mu.name}
+                      {mu.email && <span className="text-xs text-muted-foreground ml-2">{mu.email}</span>}
+                    </button>
+                  ))}
                 </div>
               )}
 
@@ -1249,6 +1320,33 @@ export default function ProjectCanvas() {
               </div>
 
               <div className="flex items-center space-x-3 flex-shrink-0">
+                {/* Project Members */}
+                {projectMembers.length > 0 && (
+                  <div className="flex items-center -space-x-1.5" data-testid="project-members">
+                    {projectMembers.slice(0, 5).map((member, idx) => {
+                      const initials = member.name?.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+                      return (
+                        <div 
+                          key={idx}
+                          className={`w-7 h-7 rounded-full border-2 border-card flex items-center justify-center text-[10px] font-semibold cursor-default ${
+                            member.type === 'guest' ? 'bg-secondary text-foreground' : 'bg-accent text-white'
+                          }`}
+                          title={member.name}
+                        >
+                          {initials}
+                        </div>
+                      );
+                    })}
+                    {projectMembers.length > 5 && (
+                      <div className="w-7 h-7 rounded-full border-2 border-card bg-secondary text-foreground flex items-center justify-center text-[10px] font-semibold"
+                        title={`${projectMembers.length - 5} more`}
+                      >
+                        +{projectMembers.length - 5}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Viewport Size Controls */}
                 {project.type === 'url' && (
                   <div className="flex items-center border rounded-lg p-1 bg-secondary">
