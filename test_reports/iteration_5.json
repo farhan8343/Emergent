@@ -1,0 +1,37 @@
+{
+  "iteration": 5,
+  "date": "2026-03-10",
+  "summary": "Fixed all P0 bugs: guest access, screenshot generation, file attachments, and JSX compilation error",
+  "tests": [
+    {"name": "Guest Access - Public project endpoint", "status": "PASS", "type": "backend"},
+    {"name": "Guest Access - Frontend renders without login", "status": "PASS", "type": "frontend"},
+    {"name": "Guest Pin Creation", "status": "PASS", "type": "backend"},
+    {"name": "Guest Comment Creation", "status": "PASS", "type": "backend"},
+    {"name": "Auth Login", "status": "PASS", "type": "backend"},
+    {"name": "Auth Pin Creation", "status": "PASS", "type": "backend"},
+    {"name": "Comment Creation", "status": "PASS", "type": "backend"},
+    {"name": "Comment With File Attachment", "status": "PASS", "type": "backend"},
+    {"name": "Guest Projects Endpoint", "status": "PASS", "type": "backend"},
+    {"name": "Dashboard Projects List", "status": "PASS", "type": "backend"},
+    {"name": "Pin Screenshot Generation (background task)", "status": "PASS", "type": "backend"},
+    {"name": "Pin Screenshot with Pillow marker", "status": "PASS", "type": "backend"},
+    {"name": "View Screenshot link in pin thread", "status": "PASS", "type": "frontend"},
+    {"name": "Sidebar on LEFT side", "status": "PASS", "type": "frontend"},
+    {"name": "Author names on pins/comments", "status": "PASS", "type": "frontend"},
+    {"name": "Device viewport buttons", "status": "PASS", "type": "frontend"},
+    {"name": "Browse/Comment mode toggle", "status": "PASS", "type": "frontend"},
+    {"name": "Dashboard with relative dates and stats", "status": "PASS", "type": "frontend"},
+    {"name": "Attachment link shown in comments", "status": "PASS", "type": "frontend"},
+    {"name": "Pause/Resume comments button", "status": "PASS", "type": "frontend"}
+  ],
+  "bugs_fixed": [
+    "Stray </Button> tag in ProjectCanvas.js causing complete render failure",
+    "responsiveView undefined - changed to viewportSize for device type filtering",
+    "Synchronous screenshot capture in comment creation removed (was blocking/slow)",
+    "Pin screenshot now includes Pillow-drawn pin marker (red circle)",
+    "Guest access improved with fallback from auth to public endpoint",
+    "Injected proxy script now passes actualUrl for correct page URL tracking"
+  ],
+  "pytest_results": "14/14 passed (0 failures)",
+  "retest_needed": false
+}

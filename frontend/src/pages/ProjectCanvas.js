@@ -96,8 +96,18 @@ export default function ProjectCanvas() {
     try {
       let response;
       if (user) {
-        // Authenticated user
-        response = await axios.get(`${API}/projects/${id}`, { headers: getAuthHeaders() });
+        try {
+          // Authenticated user - try team-scoped endpoint first
+          response = await axios.get(`${API}/projects/${id}`, { headers: getAuthHeaders() });
+        } catch (authErr) {
+          // If 404 (not in their team), try public endpoint - they might be viewing a shared project
+          if (authErr.response?.status === 404) {
+            response = await axios.get(`${API}/projects/${id}/public`);
+            setIsGuest(true);
+          } else {
+            throw authErr;
+          }
+        }
       } else {
         // Guest/public access - use public endpoint
         response = await axios.get(`${API}/projects/${id}/public`);
@@ -112,7 +122,6 @@ export default function ProjectCanvas() {
       } else {
         toast.error('Failed to load project. Please try again.');
       }
-      // Don't redirect - let user stay on page
     } finally {
       setLoading(false);
     }
@@ -121,8 +130,16 @@ export default function ProjectCanvas() {
   const fetchPins = useCallback(async () => {
     try {
       let response;
-      if (user) {
-        response = await axios.get(`${API}/pins/${id}`, { headers: getAuthHeaders() });
+      if (user && !isGuest) {
+        try {
+          response = await axios.get(`${API}/pins/${id}`, { headers: getAuthHeaders() });
+        } catch (authErr) {
+          if (authErr.response?.status === 404) {
+            response = await axios.get(`${API}/projects/${id}/pins/public`);
+          } else {
+            throw authErr;
+          }
+        }
       } else {
         // Guest/public access
         response = await axios.get(`${API}/projects/${id}/pins/public`);
@@ -131,7 +148,7 @@ export default function ProjectCanvas() {
     } catch (error) {
       console.error('Failed to fetch pins:', error);
     }
-  }, [id, user, getAuthHeaders]);
+  }, [id, user, isGuest, getAuthHeaders]);
 
   const fetchComments = useCallback(async (pinId) => {
     try {
@@ -278,12 +295,12 @@ export default function ProjectCanvas() {
 
   // Get current device type based on responsive view
   const getCurrentDeviceType = useCallback(() => {
-    switch (responsiveView) {
+    switch (viewportSize) {
       case 'tablet': return 'tablet';
       case 'mobile': return 'mobile';
       default: return 'desktop';
     }
-  }, [responsiveView]);
+  }, [viewportSize]);
 
   // Filter pins by current page URL and device type
   const currentPagePins = useMemo(() => {
@@ -1120,7 +1137,6 @@ export default function ProjectCanvas() {
                   Add Comment
                 </Button>
               </div>
-              </Button>
             </div>
           </div>
         </div>

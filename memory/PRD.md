@@ -1,53 +1,62 @@
-# Markuply - Visual Markup and Review SaaS
+# Markuply - Visual Markup & Review SaaS
 
-## Tech Stack
-- **Frontend**: React, Tailwind CSS, Shadcn UI
-- **Backend**: FastAPI, Python, Playwright (reverse proxy)
-- **Database**: MongoDB (Motor async driver)
-- **Authentication**: JWT-based
+## Original Problem Statement
+Build a SaaS web application called "Markuply" for visual markup and review. Users can leave pin-based comments on live websites, PDFs, and images. The app includes a subscription system and an admin dashboard. The core architecture uses a server-side reverse proxy (Playwright) to load third-party websites within the application, bypassing security measures like Cloudflare.
+
+## Architecture
+- **Frontend**: React + Tailwind CSS + Shadcn/UI, port 3000
+- **Backend**: FastAPI + Motor (async MongoDB) + Playwright, port 8001
+- **Database**: MongoDB (markuply_db)
+- **Core Feature**: Playwright-based reverse proxy for loading external websites in iframe
+
+## Key Files
+- `/app/backend/server.py` - Monolithic backend (1850+ lines)
+- `/app/frontend/src/pages/ProjectCanvas.js` - Main review UI (1650+ lines)
+- `/app/frontend/src/pages/Dashboard.js` - Project dashboard
+- `/app/frontend/src/App.js` - Routing (guest-friendly)
+- `/app/frontend/src/components/Navbar.js` - Navigation with guest support
+
+## Credentials
+- Super Admin: admin@markuply.com / admin123
+- Guest: No credentials, visit /project/:id directly
 
 ## What's Been Implemented
+- User auth (register/login/JWT)
+- Team management with plan-based limits
+- Project creation (URL, image, PDF types)
+- Playwright reverse proxy for external websites
+- Pin-based commenting system
+- Guest access via public share links
+- Screenshot on pin creation (background task with Pillow marker)
+- File attachments on comments
+- Device-specific pin visibility (desktop/tablet/mobile)
+- Page-specific pin filtering
+- Comments sidebar on the LEFT
+- Optimistic UI for pin/comment creation
+- Relative dates on dashboard
+- Project stats (comment counts, activity indicators)
+- Pause/resume comments for project owners
+- Pin hover preview boxes
+- Screenshot lightbox
+- Admin panel & Super Admin dashboard
+- Guest projects page
 
-### Core Features ✅
-1. **Reverse Proxy with Cloudflare Bypass** - Playwright renders pages with stealth settings
-2. **Pin-based Commenting** - Click to create pins, instant creation
-3. **Sidebar on LEFT** - Comments panel on left side
-4. **Guest Access** - Full viewing without login, popup only when adding pin/comment
-5. **Screenshot on Pin Creation** - Background task captures viewport
-6. **Pause Comments** - Host can pause new comments for guests
-7. **Page-specific Pins** - Only show pins for current page on canvas
-8. **Pin Navigation** - Click pin in list to navigate to page and scroll position
-9. **Loading Indicators** - Show loading when navigating within proxy
-10. **View Screenshot Lightbox** - Click "View Screenshot" to open fullscreen
+## P0 Bugs Fixed (March 10, 2026)
+1. Stray `</Button>` tag causing complete frontend render failure
+2. `responsiveView` undefined variable → fixed to `viewportSize`
+3. Synchronous screenshot in comment creation removed (was blocking)
+4. Pin screenshots now include Pillow-drawn pin markers
+5. Guest access improved with auth→public fallback
+6. Proxy script now passes actualUrl for page tracking
 
-### Recent Fixes (Mar 1, 2026) ✅
-1. Guest redirect fixed - no longer redirects to homepage
-2. File attachment error fixed - background screenshot generation
-3. Sidebar moved to LEFT side
-4. Pin creation is instant (screenshot in background)
-5. "View Screenshot" link opens lightbox
-6. Pause/Resume comments toggle for hosts
-7. Loading overlay when navigating pages
-8. Page URL tracking for page-specific pins
+## Remaining P1/P2 Tasks
+- [ ] P2: Super Admin dashboard - replace static data with real MongoDB aggregations
+- [ ] P2: Refactor server.py into modules (routes, models, proxy)
+- [ ] P2: Refactor ProjectCanvas.js into smaller components
 
-### API Endpoints
-
-#### Public Endpoints (No Auth)
-- GET /api/projects/{id}/public
-- GET /api/projects/{id}/pins/public
-- POST /api/pins/guest
-
-#### Protected Endpoints
-- POST /api/pins - Create pin with background screenshot
-- POST /api/projects/{id}/toggle-comments - Pause/resume comments
-
-## Guest Flow
-1. Guest accesses share link → Project loads immediately
-2. Guest can browse freely, scroll, switch modes
-3. Guest clicks to add pin → "Join the conversation" dialog
-4. Guest provides name + email (stored in localStorage)
-5. Guest creates pin (instant) → Screenshot captured in background
-
-## Pending Tasks
-1. Email notifications for replies/mentions
-2. Stripe subscription integration
+## Future/Backlog
+- [ ] Real-time updates (WebSockets)
+- [ ] Email notifications for replies/mentions
+- [ ] Stripe subscription & payment system
+- [ ] Plan-based limits enforcement
+- [ ] Advanced annotation tools (arrows, text boxes)

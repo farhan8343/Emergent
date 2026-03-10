@@ -879,12 +879,18 @@ async def create_pin_with_screenshot(
     return Pin(**pin)
 
 async def generate_pin_screenshot(pin_id: str, url: str, scroll_y: float, team_id: str):
-    """Background task to capture screenshot for a pin using Playwright"""
+    """Background task to capture screenshot for a pin using Playwright and mark pin location"""
     try:
+        # Get pin data for coordinates
+        pin = await db.pins.find_one({'id': pin_id}, {'_id': 0})
+        if not pin:
+            logger.error(f"Pin {pin_id} not found for screenshot")
+            return
+        
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
-                args=['--disable-blink-features=AutomationControlled', '--no-sandbox']
+                args=['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-dev-shm-usage']
             )
             context = await browser.new_context(
                 viewport={'width': 1200, 'height': 800},
@@ -899,8 +905,13 @@ async def generate_pin_screenshot(pin_id: str, url: str, scroll_y: float, team_i
             try:
                 await page.goto(url, wait_until='networkidle', timeout=30000)
             except Exception:
-                await page.goto(url, wait_until='domcontentloaded', timeout=20000)
-                await page.wait_for_timeout(2000)
+                try:
+                    await page.goto(url, wait_until='domcontentloaded', timeout=20000)
+                    await page.wait_for_timeout(2000)
+                except Exception as nav_err:
+                    logger.error(f"Failed to navigate to {url}: {nav_err}")
+                    await browser.close()
+                    return
             
             # Scroll to the position where pin was created
             if scroll_y > 0:
@@ -910,11 +921,39 @@ async def generate_pin_screenshot(pin_id: str, url: str, scroll_y: float, team_i
             screenshot_bytes = await page.screenshot()
             await browser.close()
             
+            # Open image and draw pin marker
+            img = Image.open(io.BytesIO(screenshot_bytes))
+            from PIL import ImageDraw
+            draw = ImageDraw.Draw(img)
+            
+            # Pin x,y are percentages of viewport
+            x_pos = int((pin['x'] / 100) * img.width)
+            y_pos = int((pin['y'] / 100) * img.height)
+            
+            # Draw pin marker - red circle with white border
+            radius = 16
+            # White outer circle
+            draw.ellipse(
+                [(x_pos - radius - 2, y_pos - radius - 2), (x_pos + radius + 2, y_pos + radius + 2)],
+                fill='white'
+            )
+            # Red inner circle
+            draw.ellipse(
+                [(x_pos - radius, y_pos - radius), (x_pos + radius, y_pos + radius)],
+                fill='red',
+                outline='darkred',
+                width=2
+            )
+            # White dot in center
+            draw.ellipse(
+                [(x_pos - 4, y_pos - 4), (x_pos + 4, y_pos + 4)],
+                fill='white'
+            )
+            
+            # Save image
             screenshot_filename = f"pin_{pin_id}.png"
             screenshot_path = UPLOAD_DIR / 'screenshots' / screenshot_filename
-            
-            async with aiofiles.open(screenshot_path, 'wb') as f:
-                await f.write(screenshot_bytes)
+            img.save(screenshot_path, 'PNG', quality=85)
             
             # Update pin with screenshot path
             await db.pins.update_one(
@@ -923,11 +962,13 @@ async def generate_pin_screenshot(pin_id: str, url: str, scroll_y: float, team_i
             )
             
             # Update storage
-            file_size_mb = len(screenshot_bytes) / (1024 * 1024)
-            await db.teams.update_one(
-                {'id': team_id},
-                {'$inc': {'storage_used_mb': file_size_mb}}
-            )
+            file_size = screenshot_path.stat().st_size
+            file_size_mb = file_size / (1024 * 1024)
+            if team_id:
+                await db.teams.update_one(
+                    {'id': team_id},
+                    {'$inc': {'storage_used_mb': file_size_mb}}
+                )
             
             logger.info(f"Generated screenshot for pin {pin_id}")
     except Exception as e:
@@ -1116,20 +1157,6 @@ async def create_comment(
         author_id = current_user['id']
         author_name = current_user['name']
     
-    # Get pin and project info for screenshot
-    pin = await db.pins.find_one({'id': comment_data.pin_id}, {'_id': 0})
-    screenshot_path = None
-    
-    if pin:
-        project = await db.projects.find_one({'id': pin['project_id']}, {'_id': 0})
-        if project and project.get('content_url'):
-            # Capture screenshot in background
-            screenshot_path = await capture_screenshot(
-                project['content_url'],
-                pin['x'],
-                pin['y']
-            )
-    
     comment = {
         'id': str(uuid.uuid4()),
         'pin_id': comment_data.pin_id,
@@ -1139,7 +1166,7 @@ async def create_comment(
         'guest_email': comment_data.guest_email if is_guest else None,
         'content': comment_data.content,
         'attachment_path': None,
-        'screenshot_path': screenshot_path,
+        'screenshot_path': None,
         'created_at': datetime.now(timezone.utc).isoformat()
     }
     await db.comments.insert_one(comment)
@@ -1695,9 +1722,18 @@ def rewrite_html(html_content: str, base_url: str, project_id: str = None) -> st
             
             // Notify parent window that page loaded
             if (window.parent !== window) {{
+                // Extract actual URL from proxy URL
+                var actualUrl = window.location.href;
+                try {{
+                    var params = new URLSearchParams(window.location.search);
+                    var urlParam = params.get('url');
+                    if (urlParam) actualUrl = decodeURIComponent(urlParam);
+                }} catch(e) {{}}
+                
                 window.parent.postMessage({{
                     type: 'MARKUPLY_PAGE_LOADED',
                     url: window.location.href,
+                    actualUrl: actualUrl,
                     title: document.title
                 }}, '*');
             }}
